@@ -1,0 +1,54 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source">
+      <UniqueIdentifier>{0c42667c-f765-45cb-8e29-8471d549909d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header">
+      <UniqueIdentifier>{24a68bd5-bc87-425a-9a39-a33274e03920}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="ctmf.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="disjoint-set.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="segment-graph.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="SegmentTree.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="StereoDisparity.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="StereoHelper.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="Toolkit.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ctmf.c">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="SegmentTree.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="StereoDisparity.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="StereoHelper.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Toolkit.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

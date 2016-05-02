@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Header">
+      <UniqueIdentifier>{8855633e-043e-4e04-8938-140b3c7a3fb0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source">
+      <UniqueIdentifier>{b12e1025-20cb-4256-9a2b-18e1cfcc0e5e}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="BlockMatching.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Caller.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Main.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Utility.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="Device.cu">
+      <Filter>Source</Filter>
+    </CudaCompile>
+    <CudaCompile Include="test.cu">
+      <Filter>Source</Filter>
+    </CudaCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="BlockMatching.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="Caller.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="Utility.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="Device.cuh">
+      <Filter>Header</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

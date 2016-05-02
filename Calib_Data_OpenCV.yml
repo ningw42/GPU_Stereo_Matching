@@ -1,0 +1,39 @@
+%YAML:1.0
+    LeftMat: !!opencv-matrix
+        rows: 3
+        cols: 3
+        dt: f
+        data: [ 1116.744104, 0.000000, 624.050472, 
+            0.000000, 1114.049167, 372.767559, 0.000000, 
+            0.000000, 1.000000]
+    RightMat: !!opencv-matrix
+        rows: 3
+        cols: 3
+        dt: f
+        data: [ 1125.408483, 0.000000, 631.532381, 
+            0.000000, 1122.554172, 363.269831, 0.000000, 
+            0.000000, 1.000000]
+    LeftDist: !!opencv-matrix
+        rows: 5
+        cols: 1
+        dt: f
+        data: [ 0.036791, -0.216298, -0.002058, 
+            -0.000422, 0.000000]
+    RightDist: !!opencv-matrix
+        rows: 5
+        cols: 1
+        dt: f
+        data: [ 0.047295, -0.311851, 0.000326, 
+            -0.001401, 0.000000]
+    RotationVec: !!opencv-matrix
+        rows: 3
+        cols: 3
+        dt: f
+        data: [ 0.999831, 0.004900, -0.017693, 
+            -0.004914, 0.999988, -0.000744, 0.017690, 
+            0.000831, 0.999843]
+    TranslationVec: !!opencv-matrix
+        rows: 3
+        cols: 1
+        dt: f
+        data: [ -46.993557, -0.107737, -0.240733]
