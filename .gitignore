@@ -3,3 +3,5 @@
 *.suo
 /x64/*
 */x64/*
+*.user
+Output/*
