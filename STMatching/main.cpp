@@ -29,6 +29,8 @@ THE SOFTWARE.
 #include <cstdio>
 #include <string>
 #include "StereoDisparity.h"
+#include <ctime>
+#include <iostream>
 using namespace std;
 
 std::string getFileName(const char *path) {
@@ -66,7 +68,10 @@ int main(int argc, const char **argv) {
 		sscanf(argv[4], "%d", &maxLevel);
 	};
 	
+	clock_t start, end;
+	start = clock();
 	stereo_routine(argv[1], argv[2], argv[3], maxLevel, scale, sigma, method);
-	
+	end = clock();
+	cout << "time: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
 	return 0;
 }
