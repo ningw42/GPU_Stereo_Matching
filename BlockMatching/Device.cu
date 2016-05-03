@@ -1,4 +1,5 @@
 #include "Device.cuh"
+#include "BlockMatching.h"
 
 using namespace std;
 using namespace cv;
@@ -31,7 +32,7 @@ __global__ void kernalPreCal_V2(uchar *left, uchar *right, uchar *difference, in
 	}
 }
 
-__global__ void kernalFindCorr(uchar *left, uchar *right, uchar *difference, Point3i *relativeLocation, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
+__global__ void kernalFindCorr(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
 {
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
 	int currentMinSAD = 50 * windowArea;
@@ -168,9 +169,51 @@ __device__ float BilinearInterpolation(uchar *src, int rows, int cols, float x, 
 
 
 
+Device::Device(Size size, int minDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Mat &my2)
+{
+	sz = size;
+	windowSize = wsz;
+	windowLength = 2 * wsz + 1;
+	windowArea = windowLength * windowLength;
+	rows = size.height;
+	cols = size.width;
+	totalPixel = rows * cols;
+	minDisparity = minDisp;
+
+	// allocate memory for internal production
+	cudaMalloc(&d_difference, minDisparity * totalPixel * sizeof(uchar));
+
+	cudaMalloc(&d_left, totalPixel * sizeof(uchar3));
+	cudaMalloc(&d_right, totalPixel * sizeof(uchar3));
+	cudaMalloc(&d_left_remapped, totalPixel * sizeof(uchar));
+	cudaMalloc(&d_right_remapped, totalPixel * sizeof(uchar));
+	cudaMalloc(&d_left_cvted, totalPixel * sizeof(uchar));
+	cudaMalloc(&d_right_cvted, totalPixel * sizeof(uchar));
+
+	// allocate memory for result
+	cudaMalloc(&d_disparity, totalPixel * sizeof(uchar));
+	h_disparity = new uchar[totalPixel];
+
+	// allocate memory for calib data
+	cudaMalloc(&d_x1, totalPixel * sizeof(float));
+	cudaMalloc(&d_y1, totalPixel * sizeof(float));
+	cudaMalloc(&d_x2, totalPixel * sizeof(float));
+	cudaMalloc(&d_y2, totalPixel * sizeof(float));
+
+	// copy data to GPU
+	cudaMemcpy(d_x1, mx1.data, totalPixel * sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_y1, my1.data, totalPixel * sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_x2, mx2.data, totalPixel * sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_y2, my2.data, totalPixel * sizeof(float), cudaMemcpyHostToDevice);
+	cudaDeviceSynchronize();
+}
+
+Device::~Device()
+{
+}
 
 // proxy function
-void blockMatching_gpu(Mat &h_left, Mat &h_right, Mat &h_disparity, int SADWindowSize, int searchRange)
+void Device::blockMatching_gpu(Mat &h_left, Mat &h_right, Mat &h_disparity, int SADWindowSize, int searchRange)
 {
 	uchar *d_disparity, *d_left, *d_right, *d_difference, *d_sad_data;
 	uchar *h_disparity_data;
@@ -192,13 +235,6 @@ void blockMatching_gpu(Mat &h_left, Mat &h_right, Mat &h_disparity, int SADWindo
 	cudaMemset(d_disparity, 0, total * sizeof(uchar));
 	cudaMalloc(&d_difference, searchRange * total * sizeof(uchar));
 	cudaMemset(d_difference, 0, searchRange * total * sizeof(uchar));
-
-	// calculate the relative location 
-	for (int i = 0; i < windowArea; i++) {
-		h_relativeLocation[i] = Point3i(i % windowLength - SADWindowSize, i / windowLength - SADWindowSize, 0);
-		h_relativeLocation[i].z = h_relativeLocation[i].x + h_relativeLocation[i].y * cols;
-	}
-	cudaMemcpy(d_relativeLocation, h_relativeLocation, windowArea * sizeof(Point3i), cudaMemcpyHostToDevice);
 
 	// clock_t start, end;
 	cudaEvent_t start, stop;
@@ -250,7 +286,7 @@ void blockMatching_gpu(Mat &h_left, Mat &h_right, Mat &h_disparity, int SADWindo
 	/**************************************************************************************/
 	cudaEventRecord(start, 0);
 	// naive method to find correspondance
-	kernalFindCorr << <rows, cols >> >(d_left, d_right, d_difference, d_relativeLocation, d_disparity, cols, rows, windowArea, searchRange, total, windowLength, SADWindowSize);
+	kernalFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, searchRange, total, windowLength, SADWindowSize);
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
@@ -300,7 +336,7 @@ void blockMatching_gpu(Mat &h_left, Mat &h_right, Mat &h_disparity, int SADWindo
 	h_disparity = Mat(rows, cols, CV_8UC1, h_disparity_data);
 }
 
-void remap_gpu(Mat &left, Mat &right, Mat &mapX1, Mat &mapY1, Mat &mapX2, Mat &mapY2, int rows, int cols, int total, uchar *result)
+void Device::remap_gpu(Mat &left, Mat &right, Mat &mapX1, Mat &mapY1, Mat &mapX2, Mat &mapY2, int rows, int cols, int total, uchar *result)
 {
 	uchar *d_left_gpu_data, *d_right_gpu_data, *d_left, *d_right;
 	float *d_mapx1, *d_mapx2, *d_mapy1, *d_mapy2;
@@ -341,7 +377,7 @@ void remap_gpu(Mat &left, Mat &right, Mat &mapX1, Mat &mapY1, Mat &mapX2, Mat &m
 	cudaMemcpy(result, d_left_gpu_data, total * sizeof(uchar), cudaMemcpyDeviceToHost);
 }
 
-void cvtColor_gpu(uchar3 *src, uchar *dst, int rows, int cols)
+void Device::cvtColor_gpu(uchar3 *src, uchar *dst, int rows, int cols)
 {
 	uchar3 *d_src;
 	uchar *d_dst;
@@ -364,4 +400,33 @@ void cvtColor_gpu(uchar3 *src, uchar *dst, int rows, int cols)
 	cout << "GPU cvtColor : " << time << endl;
 
 	cudaMemcpy(dst, d_dst, total * sizeof(uchar), cudaMemcpyDeviceToHost);
+}
+
+void Device::pipeline(Mat &left, Mat &right)
+{
+	// resize
+	resize(left, left, sz);
+	resize(right, right, sz);
+
+	// upload data
+	cudaMemcpy(d_left, left.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_right, right.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+	// convert color
+	kernalCvtColor << <rows, cols >> >(d_left, d_left_cvted, rows, cols);
+	kernalCvtColor << <rows, cols >> >(d_right, d_right_cvted, rows, cols);
+
+	// remap
+	kernalRemap << <rows, cols >> >(d_left_cvted, d_left_remapped, d_x1, d_y1, rows, cols);
+	kernalRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
+
+	// stereo matching
+	dim3 block = dim3(20, 32, 1);
+	dim3 grid = dim3(10, 10, minDisparity);
+	kernalPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
+	kernalFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, minDisparity, totalPixel, windowLength, windowSize);
+
+	// download data
+	cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
 }

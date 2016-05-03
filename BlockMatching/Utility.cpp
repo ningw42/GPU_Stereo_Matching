@@ -296,3 +296,14 @@ void cvtColor_cpu(uchar3 *src, uchar *dst, int rows, int cols)
 		}
 	}
 }
+
+void getCalibResult(Size targetSize, Mat &x1, Mat &y1, Mat &x2, Mat &y2)
+{
+	Mat camMat1, camMat2, distCoe1, distCoe2, R, T;
+	Mat mapx1, mapy1, mapx2, mapy2;
+
+	// load calib data
+	LoadDataBatch("./../Calib_Data_OpenCV.yml", camMat1, camMat2, distCoe1, distCoe2, R, T);
+	// calib
+	Rectify(camMat1, camMat2, distCoe1, distCoe2, R, T, targetSize, x1, y1, x2, y2);
+}

@@ -4,8 +4,9 @@
 using namespace cv;
 using namespace std;
 
-void testBM(const Mat &left0, const Mat &right0, Mat &disparity, int SAD, int searchRange)
+void testBM(const Mat &left0, const Mat &right0, int SAD, int searchRange)
 {
+	Mat disparity;
 	int cols = left0.cols;
 	int rows = left0.rows;
 	int total = cols * rows;
@@ -84,6 +85,7 @@ void testBM(const Mat &left0, const Mat &right0, Mat &disparity, int SAD, int se
 	cout << "main loop " << double(end - start) / CLOCKS_PER_SEC << endl;
 
 	disparity = Mat(rows, cols, CV_8UC1, data_dm);
+	imshow("CPU", disparity);
 }
 
 void PreCal(const Mat &left0, const Mat &right0, uchar *dif_, int SAD, int searchRange)

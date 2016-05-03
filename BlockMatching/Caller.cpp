@@ -15,8 +15,9 @@ void singleFrame()
 	cvtColor(left, g1, CV_BGR2GRAY);
 	cvtColor(right, g2, CV_BGR2GRAY);
 
+	Device device;
 	clock_t start = clock();
-	blockMatching_gpu(g1, g2, disp, 5, 64);
+	device.blockMatching_gpu(g1, g2, disp, 5, 64);
 	clock_t end = clock();
 	cout << "GPU : " << (double)(end - start) / CLOCKS_PER_SEC << endl;
 
@@ -56,8 +57,9 @@ void remapTest()
 	gpu_result = new uchar[total];
 
 	// execute on cpu and gpu
+	Device d;
 	remap_cpu(left, right, mapX1, mapY1, mapX2, mapY2, total, cpu_result);
-	remap_gpu(left, right, mapX1, mapY1, mapX2, mapY2, rows, cols, total, gpu_result);
+	d.remap_gpu(left, right, mapX1, mapY1, mapX2, mapY2, rows, cols, total, gpu_result);
 
 	//for (size_t i = 0; i < total; i++)
 	//{
@@ -103,10 +105,121 @@ void cvtColorTest()
 	end = clock();
 	cout << "opencv : " << (double)(end - start) / CLOCKS_PER_SEC << endl;
 
-	cvtColor_gpu((uchar3 *)left.data, left_gray, rows, cols);
+	// cvtColor_gpu((uchar3 *)left.data, left_gray, rows, cols);
 
 	imshow("ref", left_ref);
 	imshow("cal", Mat(rows, cols, CV_8UC1, left_gray));
 
 	waitKey(0);
+}
+
+void streamDepth(Size targetSize, int SADWindowSize, int minDisp)
+{
+	VideoCapture camL, camR;
+	camL.open(0);
+	if (!camL.isOpened())
+	{
+		cout << "Left Camera Could Not Open!\n";
+		return;
+	}
+	camR.open(1);
+	if (!camR.isOpened())
+	{
+		cout << "Right Camera Could Not Open!\n";
+		return;
+	}
+	
+	
+
+	Mat x1, y1, x2, y2;
+	// calib camera
+	getCalibResult(targetSize, x1, y1, x2, y2);
+
+	// init the gpu
+	Device device(targetSize, minDisp, SADWindowSize, x1, y1, x2, y2);
+
+	// start processing
+	Mat left, right;
+	while (true)
+	{
+		// read input from camera
+		camL >> left;
+		camR >> right;
+		imshow("Left", left);
+		imshow("Right", right);
+		device.pipeline(left, right);
+		waitKey(1);
+	}
+}
+
+void photoDepth(Size targetSize, int SADWindowSize, int minDisp)
+{
+	VideoCapture camL, camR;
+	camL.open(0);
+	if (!camL.isOpened())
+	{
+		cout << "Left Camera Could Not Open!\n";
+		return;
+	}
+	camR.open(1);
+	if (!camR.isOpened())
+	{
+		cout << "Right Camera Could Not Open!\n";
+		return;
+	}
+
+
+
+	Mat x1, y1, x2, y2;
+	// calib camera
+	getCalibResult(targetSize, x1, y1, x2, y2);
+
+	// init the gpu
+	Device device(targetSize, minDisp, SADWindowSize, x1, y1, x2, y2);
+
+	// start processing
+	Mat left, right;
+	int key;
+	while (true)
+	{
+		// read input from camera
+		camL >> left;
+		camR >> right;
+		key = waitKey(1);
+		if (key == ' ')
+		{
+			device.pipeline(left, right);
+		}
+		imshow("Left", left);
+		imshow("Right", right);
+	}
+}
+
+int cameraTest()
+{
+	int id, key;
+	Mat img;
+	VideoCapture cam;
+	while (true)
+	{
+		cin >> id;
+
+		cam.open(id);
+		if (!cam.isOpened())
+		{
+			cout << "Can Not Open\n";
+			return -1;
+		}
+
+		while (true)
+		{
+			cam >> img;
+			imshow("Camera " + to_string(id), img);
+			key = waitKey(5);
+			if (key == 'q')
+			{
+				break;
+			}
+		}
+	}
 }

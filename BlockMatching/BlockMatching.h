@@ -5,7 +5,7 @@
 #include <opencv2\highgui\highgui.hpp>
 #include <ctime>
 
-void testBM(const cv::Mat &left0, const cv::Mat &right0, cv::Mat &disparity, int SAD, int searchRange);
+void testBM(const cv::Mat &left0, const cv::Mat &right0, int SAD, int searchRange);
 void PreCal(const cv::Mat &left0, const cv::Mat &right0, uchar *diff_, int SAD, int searchRange);
 void getDisp(const cv::Mat &left0, const cv::Mat &right0, uchar *disparity, int SAD, int searchRange);
 void getAllSAD(const cv::Mat &left0, const cv::Mat &right0, uchar *data_dm, int SAD, int searchRange);

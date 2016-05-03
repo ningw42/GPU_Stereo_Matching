@@ -54,4 +54,6 @@ void cvtColor_cpu(uchar3 *src, uchar *dst, int rows, int cols);
 // proxy function for remap on CPU
 void remap_cpu(Mat &left, Mat &right, Mat &mapX1, Mat &mapY1, Mat &mapX2, Mat &mapY2, int total, uchar *result);
 
+void getCalibResult(Size targetSize, Mat &x1, Mat &y1, Mat &x2, Mat &y2);
+
 #endif /* utility_h */
