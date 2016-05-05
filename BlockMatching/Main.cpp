@@ -3,8 +3,10 @@
 int main()
 {
 	//cameraTest();
-	//streamDepth(Size(320, 200), 5, 50);
-	photoDepth(Size(320, 200), 5, 60);
+	//start(Size(320, 240), 2, 32);
+	streamDepth(Size(320, 240), 5, 32);
+	//Calib();
+	//cameraTest();
 	//remapTest();
 	return 0;
 }

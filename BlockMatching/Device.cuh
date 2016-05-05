@@ -34,7 +34,7 @@ public:
 	int rows;
 	int cols;
 	int totalPixel;
-	int minDisparity;
+	int numDisparity;
 	int windowSize;
 	int windowLength;
 	int windowArea;

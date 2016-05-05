@@ -94,50 +94,91 @@ void BM_SBM(InputArray img1, InputArray img2)
 	imshow("disp", disp8);
 }
 
-int CalibrationTest(char* argv[])
+int StereoCalib()
 {
-	int numBoards = atoi(argv[1]);
-	int board_w = atoi(argv[2]);
-	int board_h = atoi(argv[3]);
-
-	cout << numBoards << board_h << board_w;
+	int numBoards, board_w, board_h;
+	cout << "Number of Positions = ";
+	cin >> numBoards;
+	cout << "Number of Coners_h= ";
+	cin >> board_h;
+	cout << "Number of Coners_w = ";
+	cin >> board_w;
 
 	Size board_sz = Size(board_w, board_h);
-	int board_n = board_w*board_h;
+	Size targetSize = Size(320, 240);
+	int board_n = board_w * board_h;
 
 	vector<vector<Point3f> > object_points;
-	vector<vector<Point2f> > image_points;
-	vector<Point2f> corners;
+	vector<vector<Point2f> > imagePoints_left, imagePoints_right;
+	vector<Point2f> corners_left, corners_right;
 
 	vector<Point3f> obj;
-	for (int j = 0; j<board_n; j++)
+	for (int j = 0; j < board_n; j++)
 	{
-		obj.push_back(Point3f(j / board_w, j%board_w, 0.0f));
+		obj.push_back(Point3f(j / board_w, j % board_w, 0.0f));
 	}
 
-	Mat img, gray;
-	VideoCapture cap = VideoCapture(1);
+	Mat img_left, img_right, gray_left, gray_right;
+	VideoCapture cap_left = VideoCapture(0);
+	VideoCapture cap_right = VideoCapture(1);
 
-	int success = 0;
-	int k = 0;
-	bool found = false;
+	// Switch the two cameras
+	cout << "Check the Camera's Relative Position\n";
+	int sw;
+	while (true)
+	{
+		cap_left >> img_left;
+		cap_right >> img_right;
+		imshow("Temp_Left", img_left);
+		imshow("Temp_Right", img_right);
+		sw = waitKey(1);
+		if (sw == ' ')
+		{
+			break;
+		}
+		else if (sw == 'p')
+		{
+			cap_left.release();
+			cap_right.release();
+			cap_left.open(1);
+			cap_right.open(0);
+		}
+	}
+	destroyAllWindows();
+
+	// find corner points
+	int success = 0, k = 0;
+	bool found_left = false, found_right = false;
 	while (success < numBoards)
 	{
-		cap >> img;
-		cvtColor(img, gray, CV_BGR2GRAY);
-		found = findChessboardCorners(gray, board_sz, corners, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
+		cap_left >> img_left;
+		cap_right >> img_right;
+		// resize
+		resize(img_left, img_left, targetSize);
+		resize(img_right, img_right, targetSize);
+		cvtColor(img_left, gray_left, CV_BGR2GRAY);
+		cvtColor(img_right, gray_right, CV_BGR2GRAY);
 
-		if (found)
+		found_left = findChessboardCorners(img_left, board_sz, corners_left, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
+		found_right = findChessboardCorners(img_right, board_sz, corners_right, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
+
+		if (found_left)
 		{
-			cornerSubPix(gray, corners, Size(11, 11), Size(-1, -1), TermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 30, 0.1));
-			drawChessboardCorners(gray, board_sz, corners, found);
+			cornerSubPix(gray_left, corners_left, Size(11, 11), Size(-1, -1), TermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 30, 0.1));
+			drawChessboardCorners(gray_left, board_sz, corners_left, found_left);
 		}
 
-		//        imshow("image", img);
-		imshow("corners", gray);
+		if (found_right)
+		{
+			cornerSubPix(gray_right, corners_right, Size(11, 11), Size(-1, -1), TermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 30, 0.1));
+			drawChessboardCorners(gray_right, board_sz, corners_right, found_right);
+		}
 
-		k = waitKey(1);
-		if (found)
+		imshow("Left", gray_left);
+		imshow("Right", gray_right);
+
+		k = waitKey(10);
+		if (found_left && found_right)
 		{
 			k = waitKey(0);
 		}
@@ -145,54 +186,92 @@ int CalibrationTest(char* argv[])
 		{
 			break;
 		}
-		if (k == ' ' && found != 0)
+		if (k == ' ' && found_left != 0 && found_right != 0)
 		{
-			image_points.push_back(corners);
+			imagePoints_left.push_back(corners_left);
+			imagePoints_right.push_back(corners_right);
 			object_points.push_back(obj);
-			printf("Corners stored\n");
-			success++;
+			printf("Corners No.%d stored\n", ++success);
 
-			if (success >= numBoards)
+			if (success > numBoards)
 			{
 				break;
 			}
 		}
-		cout << found << ':' << success << endl;
 	}
+
 	destroyAllWindows();
-	printf("Starting calibration\n");
-	Mat intrinsic = Mat(3, 3, CV_32FC1);
-	Mat distcoeffs;
-	vector<Mat> rvecs, tvecs;
+	printf("Starting Calibration\n");
+	Mat CM1 = Mat(3, 3, CV_64FC1);
+	Mat CM2 = Mat(3, 3, CV_64FC1);
+	Mat D1, D2;
+	Mat R, T, E, F;
 
-	intrinsic.at<float>(0, 0) = 1;
-	intrinsic.at<float>(1, 1) = 1;
+	stereoCalibrate(object_points, imagePoints_left, imagePoints_right,
+		CM1, D1, CM2, D2, targetSize, R, T, E, F,
+		cvTermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 100, 1e-5),
+		CV_CALIB_SAME_FOCAL_LENGTH | CV_CALIB_ZERO_TANGENT_DIST);
 
-	calibrateCamera(object_points, image_points, img.size(), intrinsic, distcoeffs, rvecs, tvecs);
+	FileStorage fs1("./../stereocalib.yml", FileStorage::WRITE);
+	fs1 << "LeftMat" << CM1;
+	fs1 << "RightMat" << CM2;
+	fs1 << "LeftDist" << D1;
+	fs1 << "RightDist" << D2;
+	fs1 << "RotationVec" << R;
+	fs1 << "TranslationVec" << T;
+	fs1 << "E" << E;
+	fs1 << "F" << F;
 
-	FileStorage fs1("mycalib.yml", FileStorage::WRITE);
-	fs1 << "CM1" << intrinsic;
-	fs1 << "D1" << distcoeffs;
+	printf("Done Calibration\n");
 
-	printf("calibration done\n");
+	printf("Starting Rectification\n");
 
-	Mat imgU;
+	Mat R1, R2, P1, P2, Q;
+	stereoRectify(CM1, D1, CM2, D2, targetSize, R, T, R1, R2, P1, P2, Q);
+	fs1 << "R1" << R1;
+	fs1 << "R2" << R2;
+	fs1 << "P1" << P1;
+	fs1 << "P2" << P2;
+	fs1 << "Q" << Q;
+	fs1.release();
+
+	printf("Done Rectification\n");
+
+	printf("Applying Undistort\n");
+
+	Mat map1x, map1y, map2x, map2y;
+	Mat imgU1, imgU2;
+	initUndistortRectifyMap(CM1, D1, R1, P1, targetSize, CV_32FC1, map1x, map1y);
+	initUndistortRectifyMap(CM2, D2, R2, P2, targetSize, CV_32FC1, map2x, map2y);
+
+	printf("Undistort complete\n");
+
 	while (1)
 	{
-		cap >> img;
-		undistort(img, imgU, intrinsic, distcoeffs);
+		cap_left >> img_left;
+		cap_right >> img_right;
 
-		imshow("image", img);
-		imshow("undistort", imgU);
+		resize(img_left, img_left, targetSize);
+		resize(img_right, img_right, targetSize);
+
+		remap(img_left, imgU1, map1x, map1y, INTER_LINEAR, BORDER_CONSTANT, Scalar());
+		remap(img_right, imgU2, map2x, map2y, INTER_LINEAR, BORDER_CONSTANT, Scalar());
+
+		imshow("Left", imgU1);
+		imshow("Right", imgU2);
 
 		k = waitKey(5);
+
 		if (k == 27)
 		{
 			break;
 		}
 	}
-	cap.release();
-	return 0;
+
+	cap_left.release();
+	cap_right.release();
+
+	return(0);
 }
 
 void photo()
@@ -303,7 +382,7 @@ void getCalibResult(Size targetSize, Mat &x1, Mat &y1, Mat &x2, Mat &y2)
 	Mat mapx1, mapy1, mapx2, mapy2;
 
 	// load calib data
-	LoadDataBatch("./../Calib_Data_OpenCV.yml", camMat1, camMat2, distCoe1, distCoe2, R, T);
+	LoadDataBatch("./../stereocalib.yml", camMat1, camMat2, distCoe1, distCoe2, R, T);
 	// calib
 	Rectify(camMat1, camMat2, distCoe1, distCoe2, R, T, targetSize, x1, y1, x2, y2);
 }

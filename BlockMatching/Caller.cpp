@@ -6,6 +6,41 @@
 using namespace std;
 using namespace cv;
 
+int cameraTest()
+{
+	int id, key;
+	Mat img;
+	VideoCapture cam;
+	while (true)
+	{
+		cin >> id;
+		cam.open(id);
+		cout << cam.get(CV_CAP_PROP_FRAME_WIDTH) << '*' << cam.get(CV_CAP_PROP_FRAME_HEIGHT) << endl;
+		cout << cam.set(CV_CAP_PROP_FRAME_WIDTH, 320) << endl;
+		cout << cam.set(CV_CAP_PROP_FRAME_HEIGHT, 240) << endl;
+		cout << cam.get(CV_CAP_PROP_FRAME_WIDTH) << '*' << cam.get(CV_CAP_PROP_FRAME_HEIGHT) << endl;
+		if (!cam.isOpened())
+		{
+			cout << "Can Not Open\n";
+			return -1;
+		}
+
+
+		while (true)
+		{
+			cam >> img;
+			imshow("Camera " + to_string(id), img);
+			key = waitKey(5);
+			if (key == 'q')
+			{
+				break;
+			}
+			else if (key == 'i')
+				cout << img.rows << '*' << img.cols << endl;
+		}
+	}
+}
+
 void singleFrame()
 {
 	Mat left, right, g1, g2, disp, disp2;
@@ -113,9 +148,10 @@ void cvtColorTest()
 	waitKey(0);
 }
 
-void streamDepth(Size targetSize, int SADWindowSize, int minDisp)
+void streamDepth(Size targetSize, int SADWindowSize, int numDisp)
 {
 	VideoCapture camL, camR;
+	Mat left, right;
 	camL.open(0);
 	if (!camL.isOpened())
 	{
@@ -128,31 +164,49 @@ void streamDepth(Size targetSize, int SADWindowSize, int minDisp)
 		cout << "Right Camera Could Not Open!\n";
 		return;
 	}
-	
-	
 
+	cout << "Check the Camera's Relative Position\n";
+	int sw;
+	while (true)
+	{
+		camL >> left;
+		camR >> right;
+		imshow("Temp_Left", left);
+		imshow("Temp_Right", right);
+		sw = waitKey(1);
+		if (sw == ' ')
+		{
+			break;
+		}
+		else if (sw == 'p')
+		{
+			camL.release();
+			camR.release();
+			camL.open(1);
+			camR.open(0);
+		}
+	}
+	destroyAllWindows();
+	
 	Mat x1, y1, x2, y2;
 	// calib camera
 	getCalibResult(targetSize, x1, y1, x2, y2);
 
 	// init the gpu
-	Device device(targetSize, minDisp, SADWindowSize, x1, y1, x2, y2);
+	Device device(targetSize, numDisp, SADWindowSize, x1, y1, x2, y2);
 
 	// start processing
-	Mat left, right;
 	while (true)
 	{
 		// read input from camera
 		camL >> left;
 		camR >> right;
-		imshow("Left", left);
-		imshow("Right", right);
 		device.pipeline(left, right);
 		waitKey(1);
 	}
 }
 
-void photoDepth(Size targetSize, int SADWindowSize, int minDisp)
+void photoDepth(Size targetSize, int SADWindowSize, int numDisp)
 {
 	VideoCapture camL, camR;
 	camL.open(0);
@@ -175,7 +229,7 @@ void photoDepth(Size targetSize, int SADWindowSize, int minDisp)
 	getCalibResult(targetSize, x1, y1, x2, y2);
 
 	// init the gpu
-	Device device(targetSize, minDisp, SADWindowSize, x1, y1, x2, y2);
+	Device device(targetSize, numDisp, SADWindowSize, x1, y1, x2, y2);
 
 	// start processing
 	Mat left, right;
@@ -195,31 +249,28 @@ void photoDepth(Size targetSize, int SADWindowSize, int minDisp)
 	}
 }
 
-int cameraTest()
+int Calib()
 {
-	int id, key;
-	Mat img;
-	VideoCapture cam;
-	while (true)
-	{
-		cin >> id;
+	return StereoCalib();
+}
 
-		cam.open(id);
-		if (!cam.isOpened())
-		{
-			cout << "Can Not Open\n";
-			return -1;
-		}
+int start_gpu(Size targetSize, int windowSize, int numDisp)
+{
+	Calib();
+	streamDepth(targetSize, windowSize, numDisp);
+	return 0;
+}
 
-		while (true)
-		{
-			cam >> img;
-			imshow("Camera " + to_string(id), img);
-			key = waitKey(5);
-			if (key == 'q')
-			{
-				break;
-			}
-		}
-	}
+int start_cpu(Size targetSize, int windowSize, int numDisp)
+{
+	Calib();
+
+	return 0;
+}
+
+int start_opencv(Size targetSize, int windowSize, int numDisp)
+{
+	Calib();
+
+	return 0;
 }

@@ -9,7 +9,13 @@ using namespace cv;
 void singleFrame();
 void remapTest();
 void cvtColorTest();
-void streamDepth(Size targetSize, int SADWindowSize, int minDisp);
-void photoDepth(Size targetSize, int SADWindowSize, int minDisp);
+void streamDepth(Size targetSize, int SADWindowSize, int numDisp);
+void photoDepth(Size targetSize, int SADWindowSize, int numDisp);
 int cameraTest();
+int Calib();
+
+// compare the three method
+int start_gpu(Size targetSize, int windowSize, int numDisp);
+int start_cpu(Size targetSize, int windowSize, int numDisp);
+int start_opencv(Size targetSize, int windowSize, int numDisp);
 #endif caller_h

@@ -25,6 +25,7 @@ __global__ void kernalPreCal_V2(uchar *left, uchar *right, uchar *difference, in
 	int frameIndex = blockIdx.z;
 	int index = frameIndex * total + frameBias;
 
+	// calculate difference only if two pixels are at the same line 
 	int refCol = colIndex - frameIndex;
 	if (refCol >= 0)
 	{
@@ -35,8 +36,8 @@ __global__ void kernalPreCal_V2(uchar *left, uchar *right, uchar *difference, in
 __global__ void kernalFindCorr(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
 {
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
-	int currentMinSAD = 50 * windowArea;
-	int matchedPosDisp = -256;
+	int currentMinSAD = 20 * windowArea;
+	int matchedPosDisp = 0;
 	int col = threadIndex % numberOfCols;
 	int row = threadIndex / numberOfCols;
 	int th = 0;
@@ -44,6 +45,7 @@ __global__ void kernalFindCorr(uchar *difference, uchar *disparity, int numberOf
 	for (int _search = 0; _search < searchRange; _search++, th += total) {
 		if (col + _search > numberOfCols) break;
 		int SAD = 0;
+		// calculate the SAD of the current disparity
 		for (int i = -SADWinwdowSize; i <= SADWinwdowSize; i++)
 		{
 			for (int j = -SADWinwdowSize; j <= SADWinwdowSize; j++)
@@ -169,7 +171,7 @@ __device__ float BilinearInterpolation(uchar *src, int rows, int cols, float x, 
 
 
 
-Device::Device(Size size, int minDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Mat &my2)
+Device::Device(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Mat &my2)
 {
 	sz = size;
 	windowSize = wsz;
@@ -178,10 +180,10 @@ Device::Device(Size size, int minDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Ma
 	rows = size.height;
 	cols = size.width;
 	totalPixel = rows * cols;
-	minDisparity = minDisp;
+	numDisparity = numDisp;
 
 	// allocate memory for internal production
-	cudaMalloc(&d_difference, minDisparity * totalPixel * sizeof(uchar));
+	cudaMalloc(&d_difference, numDisparity * totalPixel * sizeof(uchar));
 
 	cudaMalloc(&d_left, totalPixel * sizeof(uchar3));
 	cudaMalloc(&d_right, totalPixel * sizeof(uchar3));
@@ -407,6 +409,8 @@ void Device::pipeline(Mat &left, Mat &right)
 	// resize
 	resize(left, left, sz);
 	resize(right, right, sz);
+	imshow("Left", left);
+	imshow("Right", right);
 
 	// upload data
 	cudaMemcpy(d_left, left.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
@@ -421,10 +425,10 @@ void Device::pipeline(Mat &left, Mat &right)
 	kernalRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
 
 	// stereo matching
-	dim3 block = dim3(20, 32, 1);
-	dim3 grid = dim3(10, 10, minDisparity);
+	dim3 block = dim3(24, 32, 1);
+	dim3 grid = dim3(10, 10, numDisparity);
 	kernalPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
-	kernalFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, minDisparity, totalPixel, windowLength, windowSize);
+	kernalFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
 
 	// download data
 	cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);

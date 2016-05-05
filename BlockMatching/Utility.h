@@ -34,7 +34,7 @@ string MatType(int type);
 void BM_SBM(InputArray img1, InputArray img2);
 
 // calib
-int CalibrationTest(char* argv[]);
+int StereoCalib();
 
 // take photo
 void photo();
