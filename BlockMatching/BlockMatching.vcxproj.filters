@@ -21,6 +21,9 @@
     <ClCompile Include="Utility.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="guidedfilter.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="Device.cu">
@@ -41,6 +44,9 @@
       <Filter>Header</Filter>
     </ClInclude>
     <ClInclude Include="Device.cuh">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="guidedfilter.h">
       <Filter>Header</Filter>
     </ClInclude>
   </ItemGroup>

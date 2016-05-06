@@ -43,17 +43,49 @@ void photo();
 void Rectify(InputArray camMat1, InputArray camMat2, InputArray distCoe1, InputArray distCoe2, InputArray R, InputArray T, Size imageSize, OutputArray mapX1, OutputArray mapY1, OutputArray mapX2, OutputArray mapY2);
 
 // self implemented remap function
-void CPU_Remap(Mat &src, uchar *dst, Mat &mapx, Mat &mapy);
+void remap_impl(Mat &src, Mat &dst, Mat &mapx, Mat &mapy);
 
 // self implemented Bilinear Interpolation
 float CPU_BilinearInterpolation(Mat &src, float x, float y);
 
 // self implemented convert color
-void cvtColor_cpu(uchar3 *src, uchar *dst, int rows, int cols);
+void cvtColor_impl(Mat &src, Mat &dst);
 
 // proxy function for remap on CPU
-void remap_cpu(Mat &left, Mat &right, Mat &mapX1, Mat &mapY1, Mat &mapX2, Mat &mapY2, int total, uchar *result);
+//void remap_cpu(Mat &left, Mat &right, Mat &mapX1, Mat &mapY1, Mat &mapX2, Mat &mapY2, int total, uchar *result);
 
 void getCalibResult(Size targetSize, Mat &x1, Mat &y1, Mat &x2, Mat &y2);
+
+
+class Host
+{
+public:
+	Host();
+	Host(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Mat &my2);
+	~Host();
+	//void remap(Mat &src, Mat &dst);
+	//void cvtColor(Mat &src, Mat &dst);
+	void blockMatching(Mat &left, Mat &right, Mat &disparity);
+	void calculateFrame(Mat &left, Mat &right);
+private:
+	int windowSize;
+	int windowLength;
+	int windowArea;
+	int totalPixel;
+	int numDisparity;
+	Size sz;
+	int rows;
+	int cols;
+	Mat x1;
+	Mat y1;
+	Mat x2;
+	Mat y2;
+
+	Mat left_color_cvted;
+	Mat right_color_cvted;
+	Mat left_remapped;
+	Mat right_remapped;
+	Mat disparity;
+};
 
 #endif /* utility_h */

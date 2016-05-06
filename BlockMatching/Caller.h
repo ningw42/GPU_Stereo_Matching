@@ -6,13 +6,14 @@
 
 using namespace cv;
 
-void singleFrame();
-void remapTest();
-void cvtColorTest();
+//void singleFrame();
+//void remapTest();
+//void cvtColorTest();
 void streamDepth(Size targetSize, int SADWindowSize, int numDisp);
 void photoDepth(Size targetSize, int SADWindowSize, int numDisp);
 int cameraTest();
 int Calib();
+void OpenCVBM();
 
 // compare the three method
 int start_gpu(Size targetSize, int windowSize, int numDisp);

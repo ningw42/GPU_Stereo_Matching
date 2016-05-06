@@ -1,6 +1,7 @@
 #include "Device.cuh"
 #include "BlockMatching.h"
 
+
 using namespace std;
 using namespace cv;
 
@@ -29,6 +30,8 @@ __global__ void kernalPreCal_V2(uchar *left, uchar *right, uchar *difference, in
 	int refCol = colIndex - frameIndex;
 	if (refCol >= 0)
 	{
+		
+		//difference[index] = (uchar)__usad(left[frameBias] - right[frameBias - frameIndex]);
 		difference[index] = (uchar)std::abs(left[frameBias] - right[frameBias - frameIndex]);
 	}
 }
@@ -36,7 +39,7 @@ __global__ void kernalPreCal_V2(uchar *left, uchar *right, uchar *difference, in
 __global__ void kernalFindCorr(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
 {
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
-	int currentMinSAD = 20 * windowArea;
+	int currentMinSAD = 50 * windowArea;
 	int matchedPosDisp = 0;
 	int col = threadIndex % numberOfCols;
 	int row = threadIndex / numberOfCols;
@@ -55,6 +58,41 @@ __global__ void kernalFindCorr(uchar *difference, uchar *disparity, int numberOf
 				int _row = row + i;
 				if (_row >= numberOfRows || _row < 0) continue;
 				SAD += difference[th + threadIndex + numberOfCols * i + j];
+			}
+		}
+		if (SAD < currentMinSAD) {
+			matchedPosDisp = _search;
+			currentMinSAD = SAD;
+		}
+	}
+
+	disparity[threadIndex] = matchedPosDisp;
+}
+
+__global__ void kernalFindCorrNonPreCal(uchar *left, uchar *right, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
+{
+	// grid and block should be <rows, cols> respectively
+	int col = threadIdx.x;
+	int row = blockIdx.x;
+	int threadIndex = row * blockDim.x + col;
+	int currentMinSAD = 20 * windowArea;
+	int matchedPosDisp = 0;
+	int th = 0;
+
+	for (int _search = 0; _search < searchRange; _search++) {
+		if (col + _search > numberOfCols) break;
+		int SAD = 0;
+		// calculate the SAD of the current disparity
+		for (int i = -SADWinwdowSize; i <= SADWinwdowSize; i++)
+		{
+			for (int j = -SADWinwdowSize; j <= SADWinwdowSize; j++)
+			{
+				int _col = col + j;
+				if (_col >= numberOfCols || _col < 0) continue;
+				int _row = row + i;
+				if (_row >= numberOfRows || _row < 0) continue;
+				int base = threadIndex + numberOfCols * i + j;
+				SAD += (uchar)std::abs(left[base + _search] - right[base]);
 			}
 		}
 		if (SAD < currentMinSAD) {
@@ -429,6 +467,37 @@ void Device::pipeline(Mat &left, Mat &right)
 	dim3 grid = dim3(10, 10, numDisparity);
 	kernalPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
 	kernalFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
+
+	// download data
+	cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+}
+
+void Device::pipeline2(Mat &left, Mat &right)
+{
+	// resize
+	resize(left, left, sz);
+	resize(right, right, sz);
+	imshow("Left", left);
+	imshow("Right", right);
+
+	// upload data
+	cudaMemcpy(d_left, left.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_right, right.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+	// convert color
+	kernalCvtColor << <rows, cols >> >(d_left, d_left_cvted, rows, cols);
+	kernalCvtColor << <rows, cols >> >(d_right, d_right_cvted, rows, cols);
+
+	// remap
+	kernalRemap << <rows, cols >> >(d_left_cvted, d_left_remapped, d_x1, d_y1, rows, cols);
+	kernalRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
+
+	// stereo matching
+	//dim3 block = dim3(24, 32, 1);
+	//dim3 grid = dim3(10, 10, numDisparity);
+	//kernalPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
+	kernalFindCorrNonPreCal << <rows, cols >> >(d_left_remapped, d_right_remapped, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
 
 	// download data
 	cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);

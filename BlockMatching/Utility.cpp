@@ -7,6 +7,7 @@
 //
 
 #include "Utility.h"
+#include "guidedfilter.h"
 #include <iostream>
 #include <ctime>
 
@@ -312,14 +313,27 @@ void Rectify(InputArray camMat1, InputArray camMat2, InputArray distCoe1, InputA
 	initUndistortRectifyMap(camMat2, distCoe2, R2, P2, imageSize, CV_32FC1, mapX2, mapY2);
 }
 
-void CPU_Remap(Mat &src, uchar *dst, Mat &mapx, Mat &mapy)
+void cvtColor_impl(Mat &src, Mat &dst)
+{
+	int rows = src.rows, cols = src.cols;
+	for (size_t r = 0; r < rows; ++r) {
+		for (size_t c = 0; c < cols; ++c) {
+			uchar3 rgb = src.ptr<uchar3>(r)[c];
+			float channelSum = .299f * rgb.x + .587f * rgb.y + .114f * rgb.z;
+			dst.ptr<uchar>(r)[c] = (uchar)channelSum;
+		}
+	}
+}
+
+void remap_impl(Mat &src, Mat &dst, Mat &mapx, Mat &mapy)
 {
 	// dst = new uchar[src.rows * src.cols];
 	for (int row = 0; row < src.rows; row++) {
 		for (int col = 0; col < src.cols; col++) {
 			const float xcoo = mapx.ptr<float>(row)[col];
 			const float ycoo = mapy.ptr<float>(row)[col];
-			dst[row * src.cols + col] = saturate_cast<uchar>(CPU_BilinearInterpolation(src, ycoo, xcoo));
+			//dst[row * src.cols + col] = saturate_cast<uchar>(CPU_BilinearInterpolation(src, ycoo, xcoo));
+			dst.ptr<uchar>(row)[col] = saturate_cast<uchar>(CPU_BilinearInterpolation(src, ycoo, xcoo));
 		}
 	}
 }
@@ -342,39 +356,28 @@ float CPU_BilinearInterpolation(Mat &src, float x, float y)
 	return result;
 }
 
-void remap_cpu(Mat &left, Mat &right, Mat &mapX1, Mat &mapY1, Mat &mapX2, Mat &mapY2, int total, uchar *result)
-{
-	clock_t start, end;
-	uchar *left_cpu_data, *right_cpu_data;
-	Mat left_ref, right_ref;
-	left_cpu_data = new uchar[total];
-	right_cpu_data = new uchar[total];
-
-	start = clock();
-	// CPU_Remap(left, result, mapX1, mapY1);
-	CPU_Remap(left, left_cpu_data, mapX1, mapY1);
-	CPU_Remap(right, right_cpu_data, mapX2, mapY2);
-	end = clock();
-	cout << "CPU Remap : " << double(end - start) / CLOCKS_PER_SEC << endl;
-
-	//start = clock();
-	//remap(left, left_ref, mapX1, mapY1, INTER_LINEAR);
-	//remap(right, right_ref, mapX2, mapY2, INTER_LINEAR);
-	//end = clock();
-	
-	//cout << "CPU Remap : " << double(end - start) / CLOCKS_PER_SEC << endl;
-}
-
-void cvtColor_cpu(uchar3 *src, uchar *dst, int rows, int cols)
-{
-	for (size_t r = 0; r < rows; ++r) {
-		for (size_t c = 0; c < cols; ++c) {
-			uchar3 rgb = src[r * cols + c];
-			float channelSum = .299f * rgb.x + .587f * rgb.y + .114f * rgb.z;
-			dst[r * cols + c] = (uchar)channelSum;
-		}
-	}
-}
+//void remap_cpu(Mat &left, Mat &right, Mat &mapX1, Mat &mapY1, Mat &mapX2, Mat &mapY2, int total, uchar *result)
+//{
+//	clock_t start, end;
+//	uchar *left_cpu_data, *right_cpu_data;
+//	Mat left_ref, right_ref;
+//	left_cpu_data = new uchar[total];
+//	right_cpu_data = new uchar[total];
+//
+//	start = clock();
+//	// CPU_Remap(left, result, mapX1, mapY1);
+//	CPU_Remap(left, left_cpu_data, mapX1, mapY1);
+//	CPU_Remap(right, right_cpu_data, mapX2, mapY2);
+//	end = clock();
+//	cout << "CPU Remap : " << double(end - start) / CLOCKS_PER_SEC << endl;
+//
+//	//start = clock();
+//	//remap(left, left_ref, mapX1, mapY1, INTER_LINEAR);
+//	//remap(right, right_ref, mapX2, mapY2, INTER_LINEAR);
+//	//end = clock();
+//	
+//	//cout << "CPU Remap : " << double(end - start) / CLOCKS_PER_SEC << endl;
+//}
 
 void getCalibResult(Size targetSize, Mat &x1, Mat &y1, Mat &x2, Mat &y2)
 {
@@ -385,4 +388,129 @@ void getCalibResult(Size targetSize, Mat &x1, Mat &y1, Mat &x2, Mat &y2)
 	LoadDataBatch("./../stereocalib.yml", camMat1, camMat2, distCoe1, distCoe2, R, T);
 	// calib
 	Rectify(camMat1, camMat2, distCoe1, distCoe2, R, T, targetSize, x1, y1, x2, y2);
+}
+
+Host::Host()
+{
+}
+
+Host::~Host()
+{
+}
+
+Host::Host(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Mat &my2)
+{
+	sz = size;
+	windowSize = wsz;
+	windowLength = 2 * wsz + 1;
+	windowArea = windowLength * windowLength;
+	rows = size.height;
+	cols = size.width;
+	totalPixel = rows * cols;
+	numDisparity = numDisp;
+
+	x1 = mx1;
+	y1 = my1;
+	x2 = mx2;
+	y2 = my2;
+
+	left_color_cvted = Mat(rows, cols, CV_8SC1);
+	right_color_cvted = Mat(rows, cols, CV_8SC1);
+	left_remapped = Mat(rows, cols, CV_8SC1);
+	right_remapped = Mat(rows, cols, CV_8SC1);
+	disparity = Mat(rows, cols, CV_8SC1);
+}
+
+void Host::blockMatching(Mat &left, Mat &right, Mat &disparity)
+{
+	int total = cols * rows;
+	const uchar * data_left = left.ptr<uchar>(0);
+	const uchar * data_right = right.ptr<uchar>(0);
+	uchar * data_dm = new uchar[total];
+	int windowLength = 2 * windowSize + 1;
+	int windowArea = windowLength * windowLength;
+
+	memset(data_dm, 0, total * sizeof(uchar));
+	// x is col index in the windowLength * windowLength window
+	// y is row index in this window
+	// z is (x + y * cols).
+	// I compute them in advance for avoid computing repeatedly.
+	Point3i * dLocDif = new Point3i[windowArea];
+
+	for (int i = 0; i < windowArea; i++) {
+		dLocDif[i] = Point3i(i % windowLength - windowSize, i / windowLength - windowSize, 0);
+		dLocDif[i].z = dLocDif[i].x + dLocDif[i].y * cols;
+	}
+
+	// I compute disparity difference for each search range to avoid
+	// computing repeatedly.
+	uchar * dif_ = new uchar[total * numDisparity];
+	memset(dif_, 0, total * numDisparity * sizeof(uchar));
+	for (int _search = 0; _search < numDisparity; _search++) {
+		int th = _search * total;
+		for (int i = 0; i < total; i++) {
+			int c = i % cols - _search;
+			if (c < 0) continue;
+			dif_[i + th] = (uchar)std::abs(data_left[i] - data_right[i - _search]);
+		}
+	}
+
+	for (int p = 0; p < total; p++) {
+		int min = 50 * windowArea;
+		int dm = -256;
+		int _col = p % cols;
+		int _row = p / cols;
+		int th = 0;
+
+		// I search for the smallest difference between left and right image
+		// using def_.
+		for (int _search = 0; _search < numDisparity; _search++, th += total) {
+			if (_col + _search > cols) break;
+			int temp = 0;
+			for (int i = 0; i < windowArea; i++) {
+				int _c = _col + dLocDif[i].x;
+				if (_c >= cols || _c < 0) continue;
+				int _r = _row + dLocDif[i].y;
+				if (_r >= rows || _r < 0) continue;
+				temp += dif_[th + p + dLocDif[i].z];
+				if (temp > min) {
+					break;
+				}
+			}
+			if (temp < min) {
+				dm = _search;
+				min = temp;
+			}
+		}
+
+		data_dm[p] = dm;
+	}
+
+	disparity = Mat(rows, cols, CV_8UC1, data_dm);
+}
+
+void Host::calculateFrame(Mat &left, Mat &right)
+{
+	// resize 
+	resize(left, left, sz);
+	resize(right, right, sz);
+	imshow("Left", left);
+	imshow("Right", right);
+
+	// convert color
+	cvtColor_impl(left, left_color_cvted);
+	cvtColor_impl(right, right_color_cvted);
+
+	// remap
+	remap_impl(left_color_cvted, left_remapped, x1, y1);
+	remap_impl(right_color_cvted, right_remapped, x2, y2);
+
+	// stereo matching
+	blockMatching(left_remapped, right_remapped, disparity);
+
+	int r = 8;
+	double eps = 0.02 * 0.02;
+	eps *= 255 * 255;
+	imshow("Disp", disparity);
+	imshow("Filtered", guidedFilter(disparity, left_color_cvted, r, eps));
 }
