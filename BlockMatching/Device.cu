@@ -1,6 +1,6 @@
 #include "Device.cuh"
 #include "BlockMatching.h"
-
+#include "guidedFilter.cuh"
 
 using namespace std;
 using namespace cv;
@@ -77,7 +77,6 @@ __global__ void kernalFindCorrNonPreCal(uchar *left, uchar *right, uchar *dispar
 	int threadIndex = row * blockDim.x + col;
 	int currentMinSAD = 20 * windowArea;
 	int matchedPosDisp = 0;
-	int th = 0;
 
 	for (int _search = 0; _search < searchRange; _search++) {
 		if (col + _search > numberOfCols) break;
@@ -183,12 +182,12 @@ __global__ void kernalCvtColor(uchar3 *src, uchar *dst, int rows, int cols)
 	dst[index] = float2uchar(channelSum);
 }
 
-__device__ __forceinline__ uchar float2uchar(float a)
-{
-	unsigned int res = 0;
-	asm("cvt.rni.sat.u8.f32 %0, %1;" : "=r"(res) : "f"(a));
-	return res;
-}
+//__device__ __forceinline__ uchar float2uchar(float a)
+//{
+//	unsigned int res = 0;
+//	asm("cvt.rni.sat.u8.f32 %0, %1;" : "=r"(res) : "f"(a));
+//	return res;
+//}
 
 __device__ float BilinearInterpolation(uchar *src, int rows, int cols, float x, float y)
 {
@@ -232,6 +231,7 @@ Device::Device(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Ma
 
 	// allocate memory for result
 	cudaMalloc(&d_disparity, totalPixel * sizeof(uchar));
+	cudaMalloc(&d_filtered_disp, totalPixel * sizeof(uchar));
 	h_disparity = new uchar[totalPixel];
 
 	// allocate memory for calib data
@@ -246,6 +246,8 @@ Device::Device(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Ma
 	cudaMemcpy(d_x2, mx2.data, totalPixel * sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_y2, my2.data, totalPixel * sizeof(float), cudaMemcpyHostToDevice);
 	cudaDeviceSynchronize();
+
+	filter = guidedFilterGPU(rows, cols, 2, 2, 255 * 255 * 0.02 * 0.02);
 }
 
 Device::~Device()
@@ -469,7 +471,11 @@ void Device::pipeline(Mat &left, Mat &right)
 	kernalFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
 
 	// download data
-	cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+
+	filter.filter(d_left_remapped, d_disparity, d_filtered_disp);
+	cudaMemcpy(h_disparity, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
 	imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
 }
 

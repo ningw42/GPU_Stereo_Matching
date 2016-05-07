@@ -25,6 +25,8 @@
 #include <ctime>
 #include <stdio.h>
 
+#include "guidedFilter.cuh"
+
 using namespace cv;
 
 class Device
@@ -51,6 +53,9 @@ public:
 	uchar *d_left_cvted;
 	uchar *d_right_cvted;
 	uchar *h_disparity;
+	uchar *d_filtered_disp;
+
+	guidedFilterGPU filter;
 public:
 	Device(){};
 	Device(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Mat &my2);
@@ -82,6 +87,6 @@ __global__ void kernalCvtColor(uchar3 *src, uchar *dst, int rows, int cols);
 // GPU remap
 __global__ void kernalRemap(uchar *src, uchar *dst, float *mapx, float *mapy, int rows, int cols);
 __device__ float BilinearInterpolation(uchar *src, int rows, int cols, float x, float y);
-__device__ __forceinline__ uchar float2uchar(float a);
+//__device__ __forceinline__ uchar float2uchar(float a);
 
 #endif device_h

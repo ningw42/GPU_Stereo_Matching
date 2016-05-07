@@ -27,12 +27,14 @@
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="Device.cu" />
+    <CudaCompile Include="guidedFilter.cu" />
     <CudaCompile Include="test.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BlockMatching.h" />
     <ClInclude Include="Caller.h" />
     <ClInclude Include="Device.cuh" />
+    <ClInclude Include="guidedFilter.cuh" />
     <ClInclude Include="guidedfilter.h" />
     <ClInclude Include="Utility.h" />
   </ItemGroup>

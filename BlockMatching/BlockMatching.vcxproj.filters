@@ -32,6 +32,9 @@
     <CudaCompile Include="test.cu">
       <Filter>Source</Filter>
     </CudaCompile>
+    <CudaCompile Include="guidedFilter.cu">
+      <Filter>Source</Filter>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BlockMatching.h">
@@ -47,6 +50,9 @@
       <Filter>Header</Filter>
     </ClInclude>
     <ClInclude Include="guidedfilter.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="guidedFilter.cuh">
       <Filter>Header</Filter>
     </ClInclude>
   </ItemGroup>

@@ -414,11 +414,11 @@ Host::Host(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Mat &m
 	x2 = mx2;
 	y2 = my2;
 
-	left_color_cvted = Mat(rows, cols, CV_8SC1);
-	right_color_cvted = Mat(rows, cols, CV_8SC1);
-	left_remapped = Mat(rows, cols, CV_8SC1);
-	right_remapped = Mat(rows, cols, CV_8SC1);
-	disparity = Mat(rows, cols, CV_8SC1);
+	left_color_cvted = Mat(rows, cols, CV_8UC1);
+	right_color_cvted = Mat(rows, cols, CV_8UC1);
+	left_remapped = Mat(rows, cols, CV_8UC1);
+	right_remapped = Mat(rows, cols, CV_8UC1);
+	disparity = Mat(rows, cols, CV_8UC1);
 }
 
 void Host::blockMatching(Mat &left, Mat &right, Mat &disparity)
@@ -494,12 +494,21 @@ void Host::calculateFrame(Mat &left, Mat &right)
 	// resize 
 	resize(left, left, sz);
 	resize(right, right, sz);
-	imshow("Left", left);
-	imshow("Right", right);
+	//imshow("Left", left);
+	//imshow("Right", right);
+
+	Mat left_normed, right_normed;
 
 	// convert color
 	cvtColor_impl(left, left_color_cvted);
 	cvtColor_impl(right, right_color_cvted);
+
+	//normalize(left_color_cvted, left_normed, 0, 255, CV_MINMAX, CV_8UC1);
+	//normalize(right_color_cvted, right_normed, 0, 255, CV_MINMAX, CV_8UC1);
+	//imshow("gray_left", left_color_cvted);
+	//imshow("gray_right", right_color_cvted);
+	//imshow("norm_left", left_normed);
+	//imshow("norm_right", right_normed);
 
 	// remap
 	remap_impl(left_color_cvted, left_remapped, x1, y1);
@@ -512,5 +521,13 @@ void Host::calculateFrame(Mat &left, Mat &right)
 	double eps = 0.02 * 0.02;
 	eps *= 255 * 255;
 	imshow("Disp", disparity);
-	imshow("Filtered", guidedFilter(disparity, left_color_cvted, r, eps));
+	clock_t start, end;
+	start = clock();
+	Mat filtered_left = guidedFilter(left_color_cvted, disparity, r, eps);
+	Mat filtered_right = guidedFilter(left_color_cvted, disparity, r, eps);
+	end = clock();
+	cout << (double)(end - start) / CLOCKS_PER_SEC << endl;
+	imshow("Filtered_left", filtered_left);
+	imshow("Filtered_right", filtered_right);
+	imshow("self", guidedFilter(disparity, disparity, r, eps));
 }
