@@ -517,17 +517,18 @@ void Host::calculateFrame(Mat &left, Mat &right)
 	// stereo matching
 	blockMatching(left_remapped, right_remapped, disparity);
 
-	int r = 8;
+	int r = 2;
 	double eps = 0.02 * 0.02;
 	eps *= 255 * 255;
 	imshow("Disp", disparity);
 	clock_t start, end;
-	start = clock();
-	Mat filtered_left = guidedFilter(left_color_cvted, disparity, r, eps);
-	Mat filtered_right = guidedFilter(left_color_cvted, disparity, r, eps);
-	end = clock();
-	cout << (double)(end - start) / CLOCKS_PER_SEC << endl;
-	imshow("Filtered_left", filtered_left);
-	imshow("Filtered_right", filtered_right);
-	imshow("self", guidedFilter(disparity, disparity, r, eps));
+	//Mat filtered_left = guidedFilter(left_color_cvted, disparity, r, eps);
+	//Mat filtered_result;
+	//disparity.convertTo(filtered_result, CV_32FC1, 1.0 / 255);
+	//blur(left_remapped, filtered_result, Size(r, r));
+	Mat filtered_right = guidedFilter(right_color_cvted, disparity, r, eps);
+	//cout << (double)(end - start) / CLOCKS_PER_SEC << endl;
+	imshow("Filtered_result", filtered_right);
+	//imshow("Filtered_right", filtered_right);
+	//imshow("self", guidedFilter(disparity, disparity, r, eps));
 }

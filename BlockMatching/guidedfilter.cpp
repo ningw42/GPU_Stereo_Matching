@@ -7,6 +7,48 @@ static cv::Mat boxfilter(const cv::Mat &I, int r)
     return result;
 }
 
+static std::string getImageType(int number)
+{
+	// find type
+	int imgTypeInt = number % 8;
+	std::string imgTypeString;
+
+	switch (imgTypeInt)
+	{
+	case 0:
+		imgTypeString = "8U";
+		break;
+	case 1:
+		imgTypeString = "8S";
+		break;
+	case 2:
+		imgTypeString = "16U";
+		break;
+	case 3:
+		imgTypeString = "16S";
+		break;
+	case 4:
+		imgTypeString = "32S";
+		break;
+	case 5:
+		imgTypeString = "32F";
+		break;
+	case 6:
+		imgTypeString = "64F";
+		break;
+	default:
+		break;
+	}
+
+	// find channel
+	int channel = (number / 8) + 1;
+
+	std::stringstream type;
+	type << "CV_" << imgTypeString << "C" << channel;
+
+	return type.str();
+}
+
 static cv::Mat convertTo(const cv::Mat &mat, int depth)
 {
     if (mat.depth() == depth)
@@ -111,7 +153,19 @@ cv::Mat GuidedFilterMono::filterSingleChannel(const cv::Mat &p) const
     cv::Mat mean_a = boxfilter(a, r);
     cv::Mat mean_b = boxfilter(b, r);
 
-    return mean_a.mul(I) + mean_b;
+	cv::Mat result = mean_a.mul(I) + mean_b;
+
+	//for (size_t i = 0; i < result.rows; i++)
+	//{
+	//	for (size_t j = 0; j < result.cols; j++)
+	//	{
+	//		if (result.data[i*result.cols+j] < 0)
+	//		{
+	//			std::cout << result.data[i*result.cols + j] << std::endl;
+	//		}
+	//	}
+	//}
+    return result;
 }
 
 GuidedFilterColor::GuidedFilterColor(const cv::Mat &origI, int r, double eps) : r(r), eps(eps)

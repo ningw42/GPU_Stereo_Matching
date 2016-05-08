@@ -1,210 +1,11 @@
 #include "Device.cuh"
 #include "BlockMatching.h"
 #include "guidedFilter.cuh"
+#include "KernalFunction.cuh"
 
 using namespace std;
 using namespace cv;
 
-__global__ void kernalPreCal(uchar *left, uchar *right, uchar *difference, int numberOfCols, int numberOfRows, int total)
-{
-	int index = threadIdx.x;
-	int th = index * total;
-
-	for (size_t i = 0; i < total; i++)
-	{
-		int c = i % numberOfCols - index;
-		if (c < 0) continue;
-		difference[i + th] = (uchar)std::abs(left[i] - right[i - index]);
-	}
-}
-
-__global__ void kernalPreCal_V2(uchar *left, uchar *right, uchar *difference, int numberOfCols, int numberOfRows, int total)
-{
-	int colIndex = blockIdx.y * blockDim.y + threadIdx.y;
-	int rowIndex = blockIdx.x * blockDim.x + threadIdx.x;
-	int frameBias = rowIndex * numberOfCols + colIndex;
-	int frameIndex = blockIdx.z;
-	int index = frameIndex * total + frameBias;
-
-	// calculate difference only if two pixels are at the same line 
-	int refCol = colIndex - frameIndex;
-	if (refCol >= 0)
-	{
-		
-		//difference[index] = (uchar)__usad(left[frameBias] - right[frameBias - frameIndex]);
-		difference[index] = (uchar)std::abs(left[frameBias] - right[frameBias - frameIndex]);
-	}
-}
-
-__global__ void kernalFindCorr(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
-{
-	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
-	int currentMinSAD = 50 * windowArea;
-	int matchedPosDisp = 0;
-	int col = threadIndex % numberOfCols;
-	int row = threadIndex / numberOfCols;
-	int th = 0;
-
-	for (int _search = 0; _search < searchRange; _search++, th += total) {
-		if (col + _search > numberOfCols) break;
-		int SAD = 0;
-		// calculate the SAD of the current disparity
-		for (int i = -SADWinwdowSize; i <= SADWinwdowSize; i++)
-		{
-			for (int j = -SADWinwdowSize; j <= SADWinwdowSize; j++)
-			{
-				int _col = col + j;
-				if (_col >= numberOfCols || _col < 0) continue;
-				int _row = row + i;
-				if (_row >= numberOfRows || _row < 0) continue;
-				SAD += difference[th + threadIndex + numberOfCols * i + j];
-			}
-		}
-		if (SAD < currentMinSAD) {
-			matchedPosDisp = _search;
-			currentMinSAD = SAD;
-		}
-	}
-
-	disparity[threadIndex] = matchedPosDisp;
-}
-
-__global__ void kernalFindCorrNonPreCal(uchar *left, uchar *right, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
-{
-	// grid and block should be <rows, cols> respectively
-	int col = threadIdx.x;
-	int row = blockIdx.x;
-	int threadIndex = row * blockDim.x + col;
-	int currentMinSAD = 20 * windowArea;
-	int matchedPosDisp = 0;
-
-	for (int _search = 0; _search < searchRange; _search++) {
-		if (col + _search > numberOfCols) break;
-		int SAD = 0;
-		// calculate the SAD of the current disparity
-		for (int i = -SADWinwdowSize; i <= SADWinwdowSize; i++)
-		{
-			for (int j = -SADWinwdowSize; j <= SADWinwdowSize; j++)
-			{
-				int _col = col + j;
-				if (_col >= numberOfCols || _col < 0) continue;
-				int _row = row + i;
-				if (_row >= numberOfRows || _row < 0) continue;
-				int base = threadIndex + numberOfCols * i + j;
-				SAD += (uchar)std::abs(left[base + _search] - right[base]);
-			}
-		}
-		if (SAD < currentMinSAD) {
-			matchedPosDisp = _search;
-			currentMinSAD = SAD;
-		}
-	}
-
-	disparity[threadIndex] = matchedPosDisp;
-}
-
-// a pair of function to get the matched position
-__global__ void kernalFindAllSAD(uchar *left, uchar *right, uchar *difference, Point3i *relativeLocation, uchar *SAD_data, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowLength, int SADWinwdowSize)
-{
-	int colIndex = blockIdx.y * blockDim.y + threadIdx.y;
-	int rowIndex = blockIdx.x * blockDim.x + threadIdx.x;
-	int frameBias = rowIndex * numberOfCols + colIndex;
-	int frameIndex = blockIdx.z;
-	int index = frameIndex * total + frameBias;
-
-	if (colIndex + frameIndex > numberOfCols)
-	{
-		SAD_data[frameBias * searchRange + frameIndex] = 255;
-		return;
-	}
-
-	int SAD = 0;
-	int currCol, currRow;
-
-	for (int i = -SADWinwdowSize; i <= SADWinwdowSize; i++)
-	{
-		for (int j = -SADWinwdowSize; j <= SADWinwdowSize; j++)
-		{
-			currCol = colIndex + j;
-			if (currCol >= numberOfCols || currCol < 0) continue;
-			currRow = rowIndex + i;
-			if (currRow >= numberOfRows || currRow < 0) continue;
-			SAD += difference[index + i * numberOfCols + j];
-		}
-	}
-
-	SAD_data[frameBias * searchRange + frameIndex] = SAD;
-}
-
-__global__ void kernalFindMinSAD(uchar *SAD_data, uchar *disparity, int numberOfCols, int searchRange)
-{
-	// TO-DO: return the original index of the min element as the matched position
-	int step = threadIdx.x;
-	int frameBias = blockIdx.x * numberOfCols + blockIdx.y;
-	int base = searchRange * frameBias;
-	int matchedPos = 0;
-
-	int index = step + base;
-	for (size_t i = blockDim.x / 2; i > 0; i = i >> 1)
-	{
-		if (step < i)
-		{
-			if (SAD_data[index] < SAD_data[index + i])
-				SAD_data[index] = SAD_data[index];
-			else
-				SAD_data[index] = SAD_data[index + i];
-			// SAD_data[index] = min(SAD_data[index], SAD_data[index + i]);
-		}
-		__syncthreads();
-	}
-
-	if (step == 0)
-	{
-		disparity[frameBias] = matchedPos;
-	}
-}
-
-__global__ void kernalRemap(uchar *src, uchar *dst, float *mapx, float *mapy, int rows, int cols)
-{
-	int index = blockIdx.x * cols + threadIdx.x;
-
-	const float xcoo = mapx[index];
-	const float ycoo = mapy[index];
-	dst[index] = float2uchar(BilinearInterpolation(src, rows, cols, ycoo, xcoo));
-}
-
-__global__ void kernalCvtColor(uchar3 *src, uchar *dst, int rows, int cols)
-{
-	int index = blockIdx.x * cols + threadIdx.x;
-
-	uchar3 rgb = src[index];
-	float channelSum = .299f * rgb.x + .587f * rgb.y + .114f * rgb.z;
-	dst[index] = float2uchar(channelSum);
-}
-
-//__device__ __forceinline__ uchar float2uchar(float a)
-//{
-//	unsigned int res = 0;
-//	asm("cvt.rni.sat.u8.f32 %0, %1;" : "=r"(res) : "f"(a));
-//	return res;
-//}
-
-__device__ float BilinearInterpolation(uchar *src, int rows, int cols, float x, float y)
-{
-	int x1 = floorf(x), y1 = floorf(y), x2 = x1 + 1, y2 = y1 + 1;
-	if (x1 < 0 || x2 >= rows || y1 < 0 || y2 >= cols) {
-		return 0;
-	}
-
-	int baseIndex = x1 * cols + y1;
-	uchar Q11 = src[baseIndex], Q12 = src[baseIndex + 1], Q21 = src[baseIndex + cols], Q22 = src[baseIndex + cols + 1];
-
-	float left = (x2 - x) * Q11 + (x - x1) * Q21;
-	float right = (x2 - x) * Q12 + (x - x1) * Q22;
-
-	float result = (y2 - y) * left + (y - y1) * right;
-	return result;
-}
 
 
 
@@ -248,6 +49,16 @@ Device::Device(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Ma
 	cudaDeviceSynchronize();
 
 	filter = guidedFilterGPU(rows, cols, 2, 2, 255 * 255 * 0.02 * 0.02);
+
+	// test
+	cudaMalloc(&ftemp1, totalPixel * sizeof(float));
+	cudaMalloc(&ftemp2, totalPixel * sizeof(float));
+	cudaMalloc(&fresult, totalPixel * sizeof(float));
+	h_fresult = new float[totalPixel];
+	cudaMalloc(&utemp1, totalPixel * sizeof(uchar));
+	cudaMalloc(&utemp2, totalPixel * sizeof(uchar));
+	cudaMalloc(&uresult, totalPixel * sizeof(uchar));
+	h_uresult = new uchar[totalPixel];
 }
 
 Device::~Device()
@@ -470,13 +281,34 @@ void Device::pipeline(Mat &left, Mat &right)
 	kernalPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
 	kernalFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
 
-	// download data
-	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	// download data(no filter)
+	cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+
+	// guided filter 
+	//filter.filter(d_left_remapped, d_disparity, d_filtered_disp);
+	//cudaMemcpy(h_disparity, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
 	//imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
 
+	// test
 	filter.filter(d_left_remapped, d_disparity, d_filtered_disp);
-	cudaMemcpy(h_disparity, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
-	imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+	//kernalConvertToFloat<<<rows, cols>>>(d_disparity, ftemp1);
+	//kernalConvertToUchar<<<rows, cols>>>(ftemp1, utemp1);
+	cudaMemcpy(h_fresult, filter.mean_I, totalPixel * sizeof(float), cudaMemcpyDeviceToHost);
+	for (size_t i = 0; i < rows; i++)
+	{
+		for (size_t j = 0; j < cols; j++)
+		{
+			//if (h_fresult[i * cols + j] > 255)
+			//{
+				cout << h_fresult[i * cols + j] << ' ' << (int)h_disparity[i * cols +j] << endl;
+			//}
+		}
+	}
+	imshow("convert", Mat(rows, cols, CV_32FC1, h_fresult));
+	//kernalBoxFilter<<<rows, cols>>>(temp1, result, filter.r, filter.c, rows, cols);
+	//cudaMemcpy(h_result, result, totalPixel * sizeof(float), cudaMemcpyDeviceToHost);
+	//imshow("BoxFilter", Mat(rows, cols, CV_32FC1, h_result));
 }
 
 void Device::pipeline2(Mat &left, Mat &right)

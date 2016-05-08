@@ -28,6 +28,7 @@
   <ItemGroup>
     <CudaCompile Include="Device.cu" />
     <CudaCompile Include="guidedFilter.cu" />
+    <CudaCompile Include="KernalFunction.cu" />
     <CudaCompile Include="test.cu" />
   </ItemGroup>
   <ItemGroup>
@@ -36,6 +37,7 @@
     <ClInclude Include="Device.cuh" />
     <ClInclude Include="guidedFilter.cuh" />
     <ClInclude Include="guidedfilter.h" />
+    <ClInclude Include="KernalFunction.cuh" />
     <ClInclude Include="Utility.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

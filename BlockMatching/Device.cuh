@@ -55,6 +55,16 @@ public:
 	uchar *h_disparity;
 	uchar *d_filtered_disp;
 
+	// test 
+	float *ftemp1;
+	float *ftemp2;
+	float *fresult;
+	float *h_fresult;
+	uchar *utemp1;
+	uchar *utemp2;
+	uchar *uresult;
+	uchar *h_uresult;
+
 	guidedFilterGPU filter;
 public:
 	Device(){};
@@ -69,24 +79,5 @@ public:
 	void pipeline2(Mat &left, Mat &right);
 };
 
-// pre-calculate the difference
-__global__ void kernalPreCal(uchar *left, uchar *right, uchar *difference, int numberOfCols, int numberOfRows, int total);
-__global__ void kernalPreCal_V2(uchar *left, uchar *right, uchar *difference, int numberOfCols, int numberOfRows, int total);
-
-// find the corresponding point in those two photos
-__global__ void kernalFindCorr(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize);
-__global__ void kernalFindCorrNonPreCal(uchar *left, uchar *right, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize);
-
-// a pair of function to get the matched position
-__global__ void kernalFindAllSAD(uchar *left, uchar *right, uchar *difference, Point3i *relativeLocation, uchar *SAD_data, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowLength, int SADWinwdowSize);
-__global__ void kernalFindMinSAD(uchar *SAD_data, uchar *disparity, int numberOfCols, int searchRange);
-
-// convert color
-__global__ void kernalCvtColor(uchar3 *src, uchar *dst, int rows, int cols);
-
-// GPU remap
-__global__ void kernalRemap(uchar *src, uchar *dst, float *mapx, float *mapy, int rows, int cols);
-__device__ float BilinearInterpolation(uchar *src, int rows, int cols, float x, float y);
-//__device__ __forceinline__ uchar float2uchar(float a);
 
 #endif device_h

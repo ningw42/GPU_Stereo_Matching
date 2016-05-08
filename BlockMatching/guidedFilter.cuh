@@ -32,7 +32,7 @@ public:
 	guidedFilterGPU();
 	~guidedFilterGPU();
 	void filter(uchar *I, uchar *p, uchar *result);
-private:
+//private:
 	int r;
 	int c;
 	float eps;
@@ -65,16 +65,5 @@ private:
 	float *mean_a;
 	float *mean_b;
 };
-
-__global__ void kernalBoxFilter(float *src, float *dst, int r, int c, int rows, int cols);
-__global__ void kernalMul(float *first, float *second, float *result);
-__global__ void kernalDivide(float *first, float *second, float *result);
-__global__ void kernalSub(float *first, float *second, float *result);
-__global__ void kernalAddEle(float *first, float e, float *result);
-__global__ void kernalAdd(float *first, float *second, float *result);
-__global__ void kernalConvertToFloat(uchar *src, float *dst);
-__global__ void kernalConvertToUchar(float *src, uchar *dst);
-__device__ __forceinline__ float uchar2float(uchar a);
-__device__ __forceinline__ uchar float2uchar(float a);
 
 #endif guidedfilter_gpu_h

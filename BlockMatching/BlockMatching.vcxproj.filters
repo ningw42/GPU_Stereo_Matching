@@ -35,6 +35,9 @@
     <CudaCompile Include="guidedFilter.cu">
       <Filter>Source</Filter>
     </CudaCompile>
+    <CudaCompile Include="KernalFunction.cu">
+      <Filter>Source</Filter>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BlockMatching.h">
@@ -53,6 +56,9 @@
       <Filter>Header</Filter>
     </ClInclude>
     <ClInclude Include="guidedFilter.cuh">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="KernalFunction.cuh">
       <Filter>Header</Filter>
     </ClInclude>
   </ItemGroup>
