@@ -1,7 +1,7 @@
 #include "Device.cuh"
 #include "BlockMatching.h"
-#include "guidedFilter.cuh"
-#include "KernalFunction.cuh"
+#include "guidedfilter.h"
+#include "KernelFunction.cuh"
 
 using namespace std;
 using namespace cv;
@@ -114,12 +114,12 @@ void Device::blockMatching_gpu(Mat &h_left, Mat &h_right, Mat &h_disparity, int 
 	/**************************************************************************************/
 	cudaEventRecord(start, 0);
 	// naive pre-calculation
-	// kernalPreCal << <1, searchRange >> >(d_left, d_right, d_difference, cols, rows, total);
+	// kernelPreCal << <1, searchRange >> >(d_left, d_right, d_difference, cols, rows, total);
 
 	// optimized pre-calculation
 	dim3 block = dim3(32, 32, 1);
 	dim3 grid = dim3(8, 10, searchRange);
-	kernalPreCal_V2 << <grid, block >> >(d_left, d_right, d_difference, cols, rows, total);
+	kernelPreCal_V2 << <grid, block >> >(d_left, d_right, d_difference, cols, rows, total);
 
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
@@ -139,7 +139,7 @@ void Device::blockMatching_gpu(Mat &h_left, Mat &h_right, Mat &h_disparity, int 
 	/**************************************************************************************/
 	cudaEventRecord(start, 0);
 	// naive method to find correspondance
-	kernalFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, searchRange, total, windowLength, SADWindowSize);
+	kernelFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, searchRange, total, windowLength, SADWindowSize);
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
@@ -149,7 +149,7 @@ void Device::blockMatching_gpu(Mat &h_left, Mat &h_right, Mat &h_disparity, int 
 	/*
 	dim3 resolution = dim3(rows, cols, 1);
 	start = clock();
-	kernalFindAllSAD << <grid, block >> >(d_left, d_right, d_difference, d_relativeLocation, d_sad_data, cols, rows, windowArea, searchRange, total, windowLength, SADWindowSize);
+	kernelFindAllSAD << <grid, block >> >(d_left, d_right, d_difference, d_relativeLocation, d_sad_data, cols, rows, windowArea, searchRange, total, windowLength, SADWindowSize);
 	cudaDeviceSynchronize();
 	// uchar *h_sad_data = new uchar[total * searchRange];
 	// cudaMemcpy(h_sad_data, d_sad_data, total * searchRange * sizeof(uchar), cudaMemcpyDeviceToHost);
@@ -161,7 +161,7 @@ void Device::blockMatching_gpu(Mat &h_left, Mat &h_right, Mat &h_disparity, int 
 
 
 	start = clock();
-	kernalFindMinSAD << <resolution, searchRange >> >(d_sad_data, d_disparity, cols, searchRange);
+	kernelFindMinSAD << <resolution, searchRange >> >(d_sad_data, d_disparity, cols, searchRange);
 	cudaDeviceSynchronize();
 	end = clock();
 	cout << "find min : " << (double)(end - start) / CLOCKS_PER_SEC << endl;
@@ -218,8 +218,8 @@ void Device::remap_gpu(Mat &left, Mat &right, Mat &mapX1, Mat &mapY1, Mat &mapX2
 	cudaEventCreate(&stop);
 	cudaEventRecord(start, 0);
 
-	kernalRemap << <rows, cols >> >(d_left, d_left_gpu_data, d_mapx1, d_mapy1, rows, cols);
-	kernalRemap << <rows, cols >> >(d_right, d_right_gpu_data, d_mapx2, d_mapy2, rows, cols);
+	kernelRemap << <rows, cols >> >(d_left, d_left_gpu_data, d_mapx1, d_mapy1, rows, cols);
+	kernelRemap << <rows, cols >> >(d_right, d_right_gpu_data, d_mapx2, d_mapy2, rows, cols);
 
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
@@ -246,7 +246,7 @@ void Device::cvtColor_gpu(uchar3 *src, uchar *dst, int rows, int cols)
 
 	cudaEventRecord(start, 0);
 	for (size_t i = 0; i < 1000; i++)
-		kernalCvtColor << <rows, cols >> >(d_src, d_dst, rows, cols);
+		kernelCvtColor << <rows, cols >> >(d_src, d_dst, rows, cols);
 	cudaEventRecord(end, 0);
 	cudaEventSynchronize(end);
 	cudaEventElapsedTime(&time, start, end);
@@ -268,45 +268,60 @@ void Device::pipeline(Mat &left, Mat &right)
 	cudaMemcpy(d_right, right.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
 
 	// convert color
-	kernalCvtColor << <rows, cols >> >(d_left, d_left_cvted, rows, cols);
-	kernalCvtColor << <rows, cols >> >(d_right, d_right_cvted, rows, cols);
+	kernelCvtColor << <rows, cols >> >(d_left, d_left_cvted, rows, cols);
+	kernelCvtColor << <rows, cols >> >(d_right, d_right_cvted, rows, cols);
 
 	// remap
-	kernalRemap << <rows, cols >> >(d_left_cvted, d_left_remapped, d_x1, d_y1, rows, cols);
-	kernalRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
+	kernelRemap << <rows, cols >> >(d_left_cvted, d_left_remapped, d_x1, d_y1, rows, cols);
+	kernelRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
 
 	// stereo matching
 	dim3 block = dim3(24, 32, 1);
 	dim3 grid = dim3(10, 10, numDisparity);
-	kernalPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
-	kernalFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
+	kernelPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
+	kernelFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
 
 	// download data(no filter)
-	cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
-	imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
-
-	// guided filter 
-	//filter.filter(d_left_remapped, d_disparity, d_filtered_disp);
-	//cudaMemcpy(h_disparity, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
 	//imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
 
+	// guided filter 
+	filter.filter(d_disparity, d_disparity, d_filtered_disp);
+	cudaMemcpy(h_disparity, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+
 	// test
-	filter.filter(d_left_remapped, d_disparity, d_filtered_disp);
-	//kernalConvertToFloat<<<rows, cols>>>(d_disparity, ftemp1);
-	//kernalConvertToUchar<<<rows, cols>>>(ftemp1, utemp1);
-	cudaMemcpy(h_fresult, filter.mean_I, totalPixel * sizeof(float), cudaMemcpyDeviceToHost);
-	for (size_t i = 0; i < rows; i++)
-	{
-		for (size_t j = 0; j < cols; j++)
-		{
-			//if (h_fresult[i * cols + j] > 255)
-			//{
-				cout << h_fresult[i * cols + j] << ' ' << (int)h_disparity[i * cols +j] << endl;
-			//}
-		}
-	}
-	imshow("convert", Mat(rows, cols, CV_32FC1, h_fresult));
-	//kernalBoxFilter<<<rows, cols>>>(temp1, result, filter.r, filter.c, rows, cols);
+	// gpu gilter
+	//filter.filter(d_disparity, d_disparity, d_filtered_disp);
+	//// cpu filter 
+	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//Mat cpu_result = Mat(rows, cols, CV_8UC1, h_disparity);
+	//GuidedFilter gf = GuidedFilter(cpu_result, 2, 0.02 * 0.02 * 255 * 255);
+	//Mat dd = gf.filter(cpu_result);
+	//imshow("CPU", dd);
+	//// compare the result 
+	//cudaMemcpy(h_fresult, filter.result_float, totalPixel * sizeof(float), cudaMemcpyDeviceToHost);
+	//imshow("GPU float", Mat(rows, cols, CV_32FC1, h_fresult));
+
+	//cudaMemcpy(h_uresult, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//imshow("GPU uchar", Mat(rows, cols, CV_8UC1, h_uresult));
+	//for (size_t i = 0; i < rows; i++)
+	//{
+	//	for (size_t j = 0; j < cols; j++)
+	//	{
+	//		int index = i * cols + j;
+	//		if (h_fresult[index] != gf.impl_->getMat("result").ptr<float>(i)[j])
+	//		{
+	//			cout << "Diff : " << '[' << i << ',' << j << "]\t" << h_fresult[index] << '\t' << (float)gf.impl_->getMat("result").ptr<float>(i)[j] << endl;
+	//		}
+	//		else
+	//		{
+	//			cout << "Same : " << '[' << i << ',' << j << "]\t" << h_fresult[index] << '\t' << (float)gf.impl_->getMat("result").ptr<float>(i)[j] << endl;
+	//		}
+	//	}
+	//}
+	//imshow("convert", Mat(rows, cols, CV_32FC1, h_fresult));
+	//kernelBoxFilter<<<rows, cols>>>(temp1, result, filter.r, filter.c, rows, cols);
 	//cudaMemcpy(h_result, result, totalPixel * sizeof(float), cudaMemcpyDeviceToHost);
 	//imshow("BoxFilter", Mat(rows, cols, CV_32FC1, h_result));
 }
@@ -324,18 +339,18 @@ void Device::pipeline2(Mat &left, Mat &right)
 	cudaMemcpy(d_right, right.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
 
 	// convert color
-	kernalCvtColor << <rows, cols >> >(d_left, d_left_cvted, rows, cols);
-	kernalCvtColor << <rows, cols >> >(d_right, d_right_cvted, rows, cols);
+	kernelCvtColor << <rows, cols >> >(d_left, d_left_cvted, rows, cols);
+	kernelCvtColor << <rows, cols >> >(d_right, d_right_cvted, rows, cols);
 
 	// remap
-	kernalRemap << <rows, cols >> >(d_left_cvted, d_left_remapped, d_x1, d_y1, rows, cols);
-	kernalRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
+	kernelRemap << <rows, cols >> >(d_left_cvted, d_left_remapped, d_x1, d_y1, rows, cols);
+	kernelRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
 
 	// stereo matching
 	//dim3 block = dim3(24, 32, 1);
 	//dim3 grid = dim3(10, 10, numDisparity);
-	//kernalPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
-	kernalFindCorrNonPreCal << <rows, cols >> >(d_left_remapped, d_right_remapped, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
+	//kernelPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
+	kernelFindCorrNonPreCal << <rows, cols >> >(d_left_remapped, d_right_remapped, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
 
 	// download data
 	cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);

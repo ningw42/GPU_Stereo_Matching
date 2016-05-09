@@ -1,5 +1,5 @@
 #include "guidedFilter.cuh"
-#include "KernalFunction.cuh"
+#include "KernelFunction.cuh"
 
 guidedFilterGPU::guidedFilterGPU(int _rows, int _cols, int _r, int _c, float _eps)
 {
@@ -45,37 +45,37 @@ guidedFilterGPU::~guidedFilterGPU()
 
 void guidedFilterGPU::filter(uchar *I_uchar, uchar *p_uchar, uchar *result)
 {
-	kernalConvertToFloat << <rows, cols >> >(I_uchar, I); // I convert to float
-	kernalConvertToFloat << <rows, cols >> >(p_uchar, p); // p convert to float
+	kernelConvertToFloat << <rows, cols >> >(I_uchar, I); // I convert to float
+	kernelConvertToFloat << <rows, cols >> >(p_uchar, p); // p convert to float
 
-	kernalBoxFilter << <rows, cols >> >(I, mean_I, r, c, rows, cols); // mean_I = boxfilter(I, r, c)
+	kernelBoxFilter << <rows, cols >> >(I, mean_I, r, c, rows, cols); // mean_I = boxfilter(I, r, c)
 
-	kernalMul << <rows, cols >> >(I, I, sq_I); // 
-	kernalBoxFilter << <rows, cols >> >(sq_I, mean_II, r, c, rows, cols);// mean_II = boxfilter(I.mul(I), r, c)
+	kernelMul << <rows, cols >> >(I, I, sq_I); // 
+	kernelBoxFilter << <rows, cols >> >(sq_I, mean_II, r, c, rows, cols);// mean_II = boxfilter(I.mul(I), r, c)
 
-	kernalMul << <rows, cols >> >(mean_I, mean_I, sq_mean_I); //
-	kernalSub << <rows, cols >> >(mean_II, sq_mean_I, var_I); // var_I = mean_II - mean_I.mul(mean_I)
+	kernelMul << <rows, cols >> >(mean_I, mean_I, sq_mean_I); // can be optimized
+	kernelSub << <rows, cols >> >(mean_II, sq_mean_I, var_I); // var_I = mean_II - mean_I.mul(mean_I)
 
-	kernalBoxFilter << <rows, cols >> >(p, mean_p, r, c, rows, cols); // mean_p = boxfilter(p, r, c)
+	kernelBoxFilter << <rows, cols >> >(p, mean_p, r, c, rows, cols); // mean_p = boxfilter(p, r, c)
 	
-	kernalMul << <rows, cols >> >(I, p, mul_Ip); // 
-	kernalBoxFilter << <rows, cols >> >(mul_Ip, mean_Ip, r, c, rows, cols); // mean_Ip = boxfilter(I.mul(p), r, c)
+	kernelMul << <rows, cols >> >(I, p, mul_Ip); // 
+	kernelBoxFilter << <rows, cols >> >(mul_Ip, mean_Ip, r, c, rows, cols); // mean_Ip = boxfilter(I.mul(p), r, c)
 
-	kernalMul << <rows, cols >> >(mean_I, mean_p, mul_mean_Ip_mean_p);
-	kernalSub << <rows, cols >> >(mean_Ip, mul_mean_Ip_mean_p, cov_Ip); // cov_Ip = mean_Ip - mean_I.mul(mean_p);
+	kernelMul << <rows, cols >> >(mean_I, mean_p, mul_mean_Ip_mean_p); // can be optimized
+	kernelSub << <rows, cols >> >(mean_Ip, mul_mean_Ip_mean_p, cov_Ip); // cov_Ip = mean_Ip - mean_I.mul(mean_p);
 
-	kernalAddEle << <rows, cols >> >(var_I, eps, sum_varI_eps); //
-	kernalDivide << <rows, cols >> >(cov_Ip, sum_varI_eps, a); // a = cov_Ip / (var_I + eps)
+	kernelAddEle << <rows, cols >> >(var_I, eps, sum_varI_eps); // can be optimized
+	kernelDivide << <rows, cols >> >(cov_Ip, sum_varI_eps, a); // a = cov_Ip / (var_I + eps)
 
-	kernalMul << <rows, cols >> >(a, mean_I, mul_a_meanI); //
-	kernalSub << <rows, cols >> >(mean_p, mul_a_meanI, b); // b = mean_p - a.mul(mean_I);
+	kernelMul << <rows, cols >> >(a, mean_I, mul_a_meanI); // can be optimized
+	kernelSub << <rows, cols >> >(mean_p, mul_a_meanI, b); // b = mean_p - a.mul(mean_I);
 
-	kernalBoxFilter << <rows, cols >> >(a, mean_a, r, c, rows, cols); // mean_a = boxfilter(a, r, c)
+	kernelBoxFilter << <rows, cols >> >(a, mean_a, r, c, rows, cols); // mean_a = boxfilter(a, r, c)
 
-	kernalBoxFilter << <rows, cols >> >(b, mean_b, r, c, rows, cols); // mean_b = boxfilter(b, r, c)
+	kernelBoxFilter << <rows, cols >> >(b, mean_b, r, c, rows, cols); // mean_b = boxfilter(b, r, c)
 
-	kernalMul << <rows, cols >> >(mean_a, I, mul_meana_I);
-	kernalAdd << <rows, cols >> >(mul_meana_I, mean_b, result_float); // return mean_a.mul(I) + mean_b
+	kernelMul << <rows, cols >> >(mean_a, I, mul_meana_I); // can be optimized
+	kernelAdd << <rows, cols >> >(mul_meana_I, mean_b, result_float); // return mean_a.mul(I) + mean_b
 
-	kernalConvertToUchar << <rows, cols >> >(result_float, result); // 
+	kernelConvertToUchar << <rows, cols >> >(result_float, result); // 
 }

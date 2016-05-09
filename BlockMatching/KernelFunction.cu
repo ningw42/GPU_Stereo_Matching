@@ -1,58 +1,64 @@
-#include "KernalFunction.cuh"
+#include "KernelFunction.cuh"
 
-__global__ void kernalBoxFilter(float *src, float *dst, int r, int c, int rows, int cols)
+// guided filter
+__global__ void kernelBoxFilter(float *src, float *dst, int r, int c, int rows, int cols)
 {
 	int row = blockIdx.x, col = threadIdx.x;
 	int index = row * blockDim.x + col;
 	float sum = 0;
-	for (size_t currRow = MAX(row - r, 0); currRow <= MIN(rows, row + r); currRow++)
+	size_t left, right, upper, lower;
+	upper = MAX(row - r, 0);
+	lower = MIN(rows, row + r);
+	left = MAX(col - c, 0);
+	right = MIN(cols, col + c);
+	for (size_t currRow = upper; currRow <= lower; currRow++)
 	{
-		for (size_t currCol = MAX(col - c, 0); currCol <= MIN(cols, col + c); currCol++)
+		for (size_t currCol = left; currCol <= right; currCol++)
 		{
 			sum += src[currRow * cols + currCol];
 		}
 	}
 	//float temp = sum / (r * c);
-	dst[index] = sum / (r * c);
+	dst[index] = sum / ((lower - upper + 1) * (right - left + 1));
 }
 
-__global__ void kernalMul(float *first, float *second, float *result)
+__global__ void kernelMul(float *first, float *second, float *result)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	result[index] = first[index] * second[index];
 }
 
-__global__ void kernalDivide(float *first, float *second, float *result)
+__global__ void kernelDivide(float *first, float *second, float *result)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	result[index] = first[index] / second[index];
 }
 
-__global__ void kernalSub(float *first, float *second, float *result)
+__global__ void kernelSub(float *first, float *second, float *result)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	result[index] = first[index] - second[index];
 }
 
-__global__ void kernalAddEle(float *first, float e, float *result)
+__global__ void kernelAddEle(float *first, float e, float *result)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	result[index] = first[index] + e;
 }
 
-__global__ void kernalAdd(float *first, float *second, float *result)
+__global__ void kernelAdd(float *first, float *second, float *result)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	result[index] = first[index] + second[index];
 }
 
-__global__ void kernalConvertToFloat(uchar *src, float *dst)
+__global__ void kernelConvertToFloat(uchar *src, float *dst)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	dst[index] = uchar2float(src[index]);
 }
 
-__global__ void kernalConvertToUchar(float *src, uchar *dst)
+__global__ void kernelConvertToUchar(float *src, uchar *dst)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	dst[index] = float2uchar(src[index]);
@@ -60,7 +66,7 @@ __global__ void kernalConvertToUchar(float *src, uchar *dst)
 
 __device__ __forceinline__ float uchar2float(uchar a)
 {
-	return (float)a;
+	return float(a);
 }
 
 __device__ __forceinline__ uchar float2uchar(float a)
@@ -71,7 +77,8 @@ __device__ __forceinline__ uchar float2uchar(float a)
 }
 
 
-__global__ void kernalPreCal(uchar *left, uchar *right, uchar *difference, int numberOfCols, int numberOfRows, int total)
+// block matching
+__global__ void kernelPreCal(uchar *left, uchar *right, uchar *difference, int numberOfCols, int numberOfRows, int total)
 {
 	int index = threadIdx.x;
 	int th = index * total;
@@ -84,7 +91,7 @@ __global__ void kernalPreCal(uchar *left, uchar *right, uchar *difference, int n
 	}
 }
 
-__global__ void kernalPreCal_V2(uchar *left, uchar *right, uchar *difference, int numberOfCols, int numberOfRows, int total)
+__global__ void kernelPreCal_V2(uchar *left, uchar *right, uchar *difference, int numberOfCols, int numberOfRows, int total)
 {
 	int colIndex = blockIdx.y * blockDim.y + threadIdx.y;
 	int rowIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -102,16 +109,16 @@ __global__ void kernalPreCal_V2(uchar *left, uchar *right, uchar *difference, in
 	}
 }
 
-__global__ void kernalFindCorr(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
+__global__ void kernelFindCorr(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
 {
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
-	int currentMinSAD = 50 * windowArea;
-	int matchedPosDisp = 0;
+	int currentMinSAD = 100 * windowArea;
+	int matchedPosDisp = 255;
 	int col = threadIndex % numberOfCols;
 	int row = threadIndex / numberOfCols;
 	int th = 0;
 
-	for (int _search = 0; _search < searchRange; _search++, th += total) {
+	for (int _search = 1; _search <= searchRange; _search++, th += total) {
 		if (col + _search > numberOfCols) break;
 		int SAD = 0;
 		// calculate the SAD of the current disparity
@@ -132,10 +139,15 @@ __global__ void kernalFindCorr(uchar *difference, uchar *disparity, int numberOf
 		}
 	}
 
+	//if (currentMinSAD < 2 * windowArea && matchedPosDisp < 5)
+	//{
+	//	matchedPosDisp = 0;
+	//}
+
 	disparity[threadIndex] = matchedPosDisp;
 }
 
-__global__ void kernalFindCorrNonPreCal(uchar *left, uchar *right, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
+__global__ void kernelFindCorrNonPreCal(uchar *left, uchar *right, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
 {
 	// grid and block should be <rows, cols> respectively
 	int col = threadIdx.x;
@@ -170,7 +182,7 @@ __global__ void kernalFindCorrNonPreCal(uchar *left, uchar *right, uchar *dispar
 }
 
 // a pair of function to get the matched position
-__global__ void kernalFindAllSAD(uchar *left, uchar *right, uchar *difference, uchar *SAD_data, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowLength, int SADWinwdowSize)
+__global__ void kernelFindAllSAD(uchar *left, uchar *right, uchar *difference, uchar *SAD_data, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowLength, int SADWinwdowSize)
 {
 	int colIndex = blockIdx.y * blockDim.y + threadIdx.y;
 	int rowIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -202,7 +214,7 @@ __global__ void kernalFindAllSAD(uchar *left, uchar *right, uchar *difference, u
 	SAD_data[frameBias * searchRange + frameIndex] = SAD;
 }
 
-__global__ void kernalFindMinSAD(uchar *SAD_data, uchar *disparity, int numberOfCols, int searchRange)
+__global__ void kernelFindMinSAD(uchar *SAD_data, uchar *disparity, int numberOfCols, int searchRange)
 {
 	// TO-DO: return the original index of the min element as the matched position
 	int step = threadIdx.x;
@@ -230,7 +242,7 @@ __global__ void kernalFindMinSAD(uchar *SAD_data, uchar *disparity, int numberOf
 	}
 }
 
-__global__ void kernalRemap(uchar *src, uchar *dst, float *mapx, float *mapy, int rows, int cols)
+__global__ void kernelRemap(uchar *src, uchar *dst, float *mapx, float *mapy, int rows, int cols)
 {
 	int index = blockIdx.x * cols + threadIdx.x;
 
@@ -239,7 +251,7 @@ __global__ void kernalRemap(uchar *src, uchar *dst, float *mapx, float *mapy, in
 	dst[index] = float2uchar(BilinearInterpolation(src, rows, cols, ycoo, xcoo));
 }
 
-__global__ void kernalCvtColor(uchar3 *src, uchar *dst, int rows, int cols)
+__global__ void kernelCvtColor(uchar3 *src, uchar *dst, int rows, int cols)
 {
 	int index = blockIdx.x * cols + threadIdx.x;
 

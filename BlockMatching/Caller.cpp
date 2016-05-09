@@ -431,7 +431,7 @@ int start_opencv(Size targetSize, int windowSize, int numDisp)
 			imshow("right_rec", right_rec);
 			sbm(left_rec, right_rec, disparity);
 			normalize(disparity, disp_normed, 0, 255, CV_MINMAX, CV_8UC1);
-			imshow("Disp", disp_normed);
+			imshow("Disp", guidedFilter(disp_normed, disp_normed, 2, 0.02 * 0.02 * 255 * 255));
 			end = clock();
 			cout << (double)(end - start) / CLOCKS_PER_SEC << endl;
 		//}

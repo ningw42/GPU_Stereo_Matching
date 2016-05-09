@@ -59,49 +59,6 @@ static cv::Mat convertTo(const cv::Mat &mat, int depth)
     return result;
 }
 
-class GuidedFilterImpl
-{
-public:
-    virtual ~GuidedFilterImpl() {}
-
-    cv::Mat filter(const cv::Mat &p, int depth);
-
-protected:
-    int Idepth;
-
-private:
-    virtual cv::Mat filterSingleChannel(const cv::Mat &p) const = 0;
-};
-
-class GuidedFilterMono : public GuidedFilterImpl
-{
-public:
-    GuidedFilterMono(const cv::Mat &I, int r, double eps);
-
-private:
-    virtual cv::Mat filterSingleChannel(const cv::Mat &p) const;
-
-private:
-    int r;
-    double eps;
-    cv::Mat I, mean_I, var_I;
-};
-
-class GuidedFilterColor : public GuidedFilterImpl
-{
-public:
-    GuidedFilterColor(const cv::Mat &I, int r, double eps);
-
-private:
-    virtual cv::Mat filterSingleChannel(const cv::Mat &p) const;
-
-private:
-    std::vector<cv::Mat> Ichannels;
-    int r;
-    double eps;
-    cv::Mat mean_I_r, mean_I_g, mean_I_b;
-    cv::Mat invrr, invrg, invrb, invgg, invgb, invbb;
-};
 
 
 cv::Mat GuidedFilterImpl::filter(const cv::Mat &p, int depth)
@@ -137,36 +94,56 @@ GuidedFilterMono::GuidedFilterMono(const cv::Mat &origI, int r, double eps) : r(
     Idepth = I.depth();
 
     mean_I = boxfilter(I, r);
-    cv::Mat mean_II = boxfilter(I.mul(I), r);
+    mean_II = boxfilter(I.mul(I), r);
     var_I = mean_II - mean_I.mul(mean_I);
 }
 
-cv::Mat GuidedFilterMono::filterSingleChannel(const cv::Mat &p) const
+cv::Mat GuidedFilterMono::filterSingleChannel(const cv::Mat &p)
 {
-    cv::Mat mean_p = boxfilter(p, r);
-    cv::Mat mean_Ip = boxfilter(I.mul(p), r);
-    cv::Mat cov_Ip = mean_Ip - mean_I.mul(mean_p); // this is the covariance of (I, p) in each local patch.
+    mean_p = boxfilter(p, r);
+    mean_Ip = boxfilter(I.mul(p), r);
+    cov_Ip = mean_Ip - mean_I.mul(mean_p); // this is the covariance of (I, p) in each local patch.
 
-    cv::Mat a = cov_Ip / (var_I + eps); // Eqn. (5) in the paper;
-    cv::Mat b = mean_p - a.mul(mean_I); // Eqn. (6) in the paper;
+    a = cov_Ip / (var_I + eps); // Eqn. (5) in the paper;
+    b = mean_p - a.mul(mean_I); // Eqn. (6) in the paper;
 
-    cv::Mat mean_a = boxfilter(a, r);
-    cv::Mat mean_b = boxfilter(b, r);
+    mean_a = boxfilter(a, r);
+    mean_b = boxfilter(b, r);
 
-	cv::Mat result = mean_a.mul(I) + mean_b;
+	result = mean_a.mul(I) + mean_b;
 
-	//for (size_t i = 0; i < result.rows; i++)
-	//{
-	//	for (size_t j = 0; j < result.cols; j++)
-	//	{
-	//		if (result.data[i*result.cols+j] < 0)
-	//		{
-	//			std::cout << result.data[i*result.cols + j] << std::endl;
-	//		}
-	//	}
-	//}
     return result;
 }
+
+cv::Mat GuidedFilterMono::getMat(const std::string &s)
+{
+	if (s == "mean_I")
+	{
+		return mean_I;
+	}
+	else if (s == "mean_II")
+	{
+		return mean_II;
+	}
+	else if (s == "cov_Ip")
+	{
+		return cov_Ip;
+	}
+	else if (s == "result")
+	{
+		return result;
+	}
+	else if (s == "I")
+	{
+		return I;
+	}
+}
+
+cv::Mat GuidedFilterColor::getMat(const std::string &s)
+{
+	return cv::Mat(1, 1, CV_8UC1);
+}
+
 
 GuidedFilterColor::GuidedFilterColor(const cv::Mat &origI, int r, double eps) : r(r), eps(eps)
 {
@@ -214,7 +191,7 @@ GuidedFilterColor::GuidedFilterColor(const cv::Mat &origI, int r, double eps) : 
     invbb /= covDet;
 }
 
-cv::Mat GuidedFilterColor::filterSingleChannel(const cv::Mat &p) const
+cv::Mat GuidedFilterColor::filterSingleChannel(const cv::Mat &p)
 {
     cv::Mat mean_p = boxfilter(p, r);
 

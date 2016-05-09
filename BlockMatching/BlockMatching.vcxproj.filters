@@ -35,7 +35,7 @@
     <CudaCompile Include="guidedFilter.cu">
       <Filter>Source</Filter>
     </CudaCompile>
-    <CudaCompile Include="KernalFunction.cu">
+    <CudaCompile Include="KernelFunction.cu">
       <Filter>Source</Filter>
     </CudaCompile>
   </ItemGroup>
@@ -58,7 +58,7 @@
     <ClInclude Include="guidedFilter.cuh">
       <Filter>Header</Filter>
     </ClInclude>
-    <ClInclude Include="KernalFunction.cuh">
+    <ClInclude Include="KernelFunction.cuh">
       <Filter>Header</Filter>
     </ClInclude>
   </ItemGroup>
