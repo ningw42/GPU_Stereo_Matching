@@ -40,12 +40,15 @@ public:
 	int windowSize;
 	int windowLength;
 	int windowArea;
+	dim3 block;
+	dim3 grid;
 	float *d_x1;
 	float *d_y1;
 	float *d_x2;
 	float *d_y2;
 	uchar *d_difference;
 	uchar *d_disparity;
+	uchar *d_disparity_large;
 	uchar3 *d_left;
 	uchar3 *d_right;
 	uchar *d_left_remapped;
@@ -53,7 +56,9 @@ public:
 	uchar *d_left_cvted;
 	uchar *d_right_cvted;
 	uchar *h_disparity;
+	uchar *h_disparity_large;
 	uchar *d_filtered_disp;
+	uchar *d_sad_data;
 
 	// test 
 	float *ftemp1;
@@ -64,6 +69,9 @@ public:
 	uchar *utemp2;
 	uchar *uresult;
 	uchar *h_uresult;
+	uchar *h_uresult_1;
+	Mat h_left_remapped;
+	Mat h_right_remapped;
 
 	guidedFilterGPU filter;
 public:
@@ -76,7 +84,10 @@ public:
 	void cvtColor_gpu(uchar3 *src, uchar *dst, int rows, int cols);
 
 	void pipeline(Mat &left, Mat &right);
-	void pipeline2(Mat &left, Mat &right);
+	void pipeline_precal_naive(Mat &left, Mat &right);
+	void pipeline_nonprecal(Mat &left, Mat &right);
+	void pipeline_max_parallelism(Mat &left, Mat &right);
+	void pipeline_test(Mat &left, Mat &right);
 };
 
 

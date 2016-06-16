@@ -20,8 +20,13 @@ Device::Device(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Ma
 	totalPixel = rows * cols;
 	numDisparity = numDisp;
 
+	block = dim3(24, 32, 1);
+	grid = dim3(10, 10, numDisparity);
+
 	// allocate memory for internal production
 	cudaMalloc(&d_difference, numDisparity * totalPixel * sizeof(uchar));
+
+	cudaMalloc(&d_sad_data, totalPixel * numDisparity * sizeof(uchar));
 
 	cudaMalloc(&d_left, totalPixel * sizeof(uchar3));
 	cudaMalloc(&d_right, totalPixel * sizeof(uchar3));
@@ -32,8 +37,10 @@ Device::Device(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Ma
 
 	// allocate memory for result
 	cudaMalloc(&d_disparity, totalPixel * sizeof(uchar));
+	cudaMalloc(&d_disparity_large, totalPixel * sizeof(uchar));
 	cudaMalloc(&d_filtered_disp, totalPixel * sizeof(uchar));
 	h_disparity = new uchar[totalPixel];
+	h_disparity_large = new uchar[totalPixel];
 
 	// allocate memory for calib data
 	cudaMalloc(&d_x1, totalPixel * sizeof(float));
@@ -48,7 +55,7 @@ Device::Device(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Ma
 	cudaMemcpy(d_y2, my2.data, totalPixel * sizeof(float), cudaMemcpyHostToDevice);
 	cudaDeviceSynchronize();
 
-	filter = guidedFilterGPU(rows, cols, 2, 2, 255 * 255 * 0.02 * 0.02);
+	filter = guidedFilterGPU(rows, cols, 1, 1, 1e-6);
 
 	// test
 	cudaMalloc(&ftemp1, totalPixel * sizeof(float));
@@ -59,6 +66,7 @@ Device::Device(Size size, int numDisp, int wsz, Mat &mx1, Mat &my1, Mat &mx2, Ma
 	cudaMalloc(&utemp2, totalPixel * sizeof(uchar));
 	cudaMalloc(&uresult, totalPixel * sizeof(uchar));
 	h_uresult = new uchar[totalPixel];
+	h_uresult_1 = new uchar[totalPixel];
 }
 
 Device::~Device()
@@ -276,57 +284,79 @@ void Device::pipeline(Mat &left, Mat &right)
 	kernelRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
 
 	// stereo matching
-	dim3 block = dim3(24, 32, 1);
-	dim3 grid = dim3(10, 10, numDisparity);
 	kernelPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
 	kernelFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
+	//kernelFindCorr << <rows, cols >> >(d_difference, d_disparity_large, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize + 2);
+	//kernelFindCorrLinear << <rows, cols >> >(d_difference, d_disparity_large, cols, rows, numDisparity, totalPixel, 2 * windowSize);
 
 	// download data(no filter)
 	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(h_disparity_large, d_disparity_large, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
 	//imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+	//imshow("Disp Linear", Mat(rows, cols, CV_8UC1, h_disparity_large));
 
 	// guided filter 
-	filter.filter(d_disparity, d_disparity, d_filtered_disp);
+	filter.filter(d_left_cvted, d_disparity, d_filtered_disp);
 	cudaMemcpy(h_disparity, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
-	imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
-
-	// test
-	// gpu gilter
-	//filter.filter(d_disparity, d_disparity, d_filtered_disp);
-	//// cpu filter 
-	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
-	//Mat cpu_result = Mat(rows, cols, CV_8UC1, h_disparity);
-	//GuidedFilter gf = GuidedFilter(cpu_result, 2, 0.02 * 0.02 * 255 * 255);
-	//Mat dd = gf.filter(cpu_result);
-	//imshow("CPU", dd);
-	//// compare the result 
-	//cudaMemcpy(h_fresult, filter.result_float, totalPixel * sizeof(float), cudaMemcpyDeviceToHost);
-	//imshow("GPU float", Mat(rows, cols, CV_32FC1, h_fresult));
-
 	//cudaMemcpy(h_uresult, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
-	//imshow("GPU uchar", Mat(rows, cols, CV_8UC1, h_uresult));
-	//for (size_t i = 0; i < rows; i++)
-	//{
-	//	for (size_t j = 0; j < cols; j++)
-	//	{
-	//		int index = i * cols + j;
-	//		if (h_fresult[index] != gf.impl_->getMat("result").ptr<float>(i)[j])
-	//		{
-	//			cout << "Diff : " << '[' << i << ',' << j << "]\t" << h_fresult[index] << '\t' << (float)gf.impl_->getMat("result").ptr<float>(i)[j] << endl;
-	//		}
-	//		else
-	//		{
-	//			cout << "Same : " << '[' << i << ',' << j << "]\t" << h_fresult[index] << '\t' << (float)gf.impl_->getMat("result").ptr<float>(i)[j] << endl;
-	//		}
-	//	}
-	//}
-	//imshow("convert", Mat(rows, cols, CV_32FC1, h_fresult));
-	//kernelBoxFilter<<<rows, cols>>>(temp1, result, filter.r, filter.c, rows, cols);
-	//cudaMemcpy(h_result, result, totalPixel * sizeof(float), cudaMemcpyDeviceToHost);
-	//imshow("BoxFilter", Mat(rows, cols, CV_32FC1, h_result));
+
+	// norm
+	Mat result = Mat(rows, cols, CV_8UC1, h_disparity);
+	//Mat filtered = Mat(rows, cols, CV_8UC1, h_uresult);
+	Mat normed, normed_filtered;
+	normalize(result, normed, 0, 255, CV_MINMAX, CV_8UC1);
+	//normalize(filtered, normed_filtered, 0, 255, CV_MINMAX, CV_8UC1);
+	imshow("filtered", normed);
+	//imshow("filter", normed_filtered);
+
+	// non-normed
+	//imshow("Disp Filtered", guidedFilter(left, result, 2, 255 * 255 * 1e-4));
+	//imshow("GPU Filter", Mat(rows, cols, CV_8UC1, h_disparity));
+
+	waitKey(1);
 }
 
-void Device::pipeline2(Mat &left, Mat &right)
+void Device::pipeline_precal_naive(Mat &left, Mat &right)
+{
+	// resize
+	resize(left, left, sz);
+	resize(right, right, sz);
+	imshow("Left", left);
+	imshow("Right", right);
+
+	// upload data
+	cudaMemcpy(d_left, left.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_right, right.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+	// convert color
+	kernelCvtColor << <rows, cols >> >(d_left, d_left_cvted, rows, cols);
+	kernelCvtColor << <rows, cols >> >(d_right, d_right_cvted, rows, cols);
+
+	// remap
+	kernelRemap << <rows, cols >> >(d_left_cvted, d_left_remapped, d_x1, d_y1, rows, cols);
+	kernelRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
+
+	// stereo matching
+	kernelPreCal << <1, numDisparity >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
+	kernelFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
+	//kernelFindCorr << <rows, cols >> >(d_difference, d_disparity_large, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize + 2);
+	//kernelFindCorrLinear << <rows, cols >> >(d_difference, d_disparity_large, cols, rows, numDisparity, totalPixel, 2 * windowSize);
+
+	// download data(no filter)
+	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(h_disparity_large, d_disparity_large, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+	//imshow("Disp Linear", Mat(rows, cols, CV_8UC1, h_disparity_large));
+
+	// guided filter 
+	filter.filter(d_left_cvted, d_disparity, d_filtered_disp);
+	cudaMemcpy(h_disparity, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	imshow("Disp Filtered", Mat(rows, cols, CV_8UC1, h_disparity));
+
+	waitKey(1);
+}
+
+void Device::pipeline_nonprecal(Mat &left, Mat &right)
 {
 	// resize
 	resize(left, left, sz);
@@ -352,7 +382,142 @@ void Device::pipeline2(Mat &left, Mat &right)
 	//kernelPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
 	kernelFindCorrNonPreCal << <rows, cols >> >(d_left_remapped, d_right_remapped, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
 
+	filter.filter(d_left_cvted, d_disparity, d_filtered_disp);
 	// download data
+	cudaMemcpy(h_disparity, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	imshow("Disp Filtered", Mat(rows, cols, CV_8UC1, h_disparity));
+	waitKey(1);
+}
+
+void Device::pipeline_max_parallelism(Mat &left, Mat &right)
+{
+	// resize
+	resize(left, left, sz);
+	resize(right, right, sz);
+	imshow("Left", left);
+	imshow("Right", right);
+
+	// upload data
+	cudaMemcpy(d_left, left.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_right, right.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+	// convert color
+	kernelCvtColor << <rows, cols >> >(d_left, d_left_cvted, rows, cols);
+	kernelCvtColor << <rows, cols >> >(d_right, d_right_cvted, rows, cols);
+
+	// remap
+	kernelRemap << <rows, cols >> >(d_left_cvted, d_left_remapped, d_x1, d_y1, rows, cols);
+	kernelRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
+
+	// stereo matching
+	dim3 resolution = dim3(rows, cols, 1);
+	kernelPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
+	kernelFindAllSAD << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, d_sad_data, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
+	kernelFindMinSAD << <resolution, numDisparity, numDisparity * sizeof(int) >> >(d_sad_data, d_disparity, cols, numDisparity);
+
+
+	// download data(no filter)
+	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(h_disparity_large, d_disparity_large, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+	//imshow("Disp Linear", Mat(rows, cols, CV_8UC1, h_disparity_large));
+
+	// guided filter 
+	filter.filter(d_left_cvted, d_disparity, d_filtered_disp);
+	cudaMemcpy(h_disparity, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	imshow("Disp Filtered", Mat(rows, cols, CV_8UC1, h_disparity));
+
+	waitKey(1);
+}
+
+void Device::pipeline_test(Mat &left, Mat &right)
+{
+	// resize
+	resize(left, left, sz);
+	resize(right, right, sz);
+	imshow("Left", left);
+	imshow("Right", right);
+
+	// upload data
+	cudaMemcpy(d_left, left.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_right, right.data, totalPixel * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+	// convert color
+	kernelCvtColor << <rows, cols >> >(d_left, d_left_cvted, rows, cols);
+	kernelCvtColor << <rows, cols >> >(d_right, d_right_cvted, rows, cols);
+
+	// remap
+	kernelRemap << <rows, cols >> >(d_left_cvted, d_left_remapped, d_x1, d_y1, rows, cols);
+	kernelRemap << <rows, cols >> >(d_right_cvted, d_right_remapped, d_x2, d_y2, rows, cols);
+
+	// stereo matching
+	dim3 block = dim3(24, 32, 1);
+	dim3 grid = dim3(10, 10, numDisparity);
+	kernelPreCal_V2 << <grid, block >> >(d_left_remapped, d_right_remapped, d_difference, cols, rows, totalPixel);
+	kernelFindCorr << <rows, cols >> >(d_difference, d_disparity, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize);
+	//kernelFindCorr << <rows, cols >> >(d_difference, d_disparity_large, cols, rows, windowArea, numDisparity, totalPixel, windowLength, windowSize + 2);
+	//kernelFindCorrLinear << <rows, cols >> >(d_difference, d_disparity_large, cols, rows, numDisparity, totalPixel, 2 * windowSize);
+
+	// get the remapped image
+	//cudaMemcpy(h_uresult, d_left_remapped, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(h_uresult_1, d_right_remapped, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//h_left_remapped = Mat(rows, cols, CV_8UC1, h_uresult);
+	//h_right_remapped = Mat(rows, cols, CV_8UC1, h_uresult_1);
+	//imshow("Left Remapped", h_left_remapped);
+	//imshow("Right Remapped", h_right_remapped);
+	//char c = waitKey(1);
+	//if (c == ' ')
+	//{
+	//	clock_t t = clock();
+	//	string s = to_string(t);
+	//	imwrite("./../Output/" + s + "_left_remapped.png", h_left_remapped);
+	//	imwrite("./../Output/" + s + "_right_remapped.png", h_right_remapped);
+	//	imwrite("./../Output/" + s + "_left.png", left);
+	//	imwrite("./../Output/" + s + "_right.png", right);
+	//}
+
+
+	// download data(no filter)
+	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(h_disparity_large, d_disparity_large, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+	//imshow("Disp Linear", Mat(rows, cols, CV_8UC1, h_disparity_large));
+
+	// guided filter 
+	filter.filter(d_left_cvted, d_disparity, d_filtered_disp);
 	cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
-	imshow("Disp", Mat(rows, cols, CV_8UC1, h_disparity));
+	cudaMemcpy(h_uresult, d_filtered_disp, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	h_left_remapped = Mat(rows, cols, CV_8UC1, h_disparity);
+	h_right_remapped = Mat(rows, cols, CV_8UC1, h_uresult);
+
+	Mat disp, filtered_disp;
+	normalize(h_left_remapped, disp, 0, 255, CV_MINMAX, CV_8UC1);
+	normalize(h_right_remapped, filtered_disp, 0, 255, CV_MINMAX, CV_8UC1);
+
+	imshow("Disp", disp);
+	imshow("Disp Filtered", filtered_disp);
+
+	char c = waitKey(1);
+	if (c == ' ')
+	{
+		clock_t t = clock();
+		string s = to_string(t);
+		imwrite("./../Output/" + s + "_disparity.png", disp);
+		imwrite("./../Output/" + s + "_filtered_disp.png", filtered_disp);
+		imwrite("./../Output/" + s + "_left.png", left);
+		imwrite("./../Output/" + s + "_right.png", right);
+	}
+
+	// test
+	// gpu filter
+	//filter.filter(d_disparity, d_disparity, d_filtered_disp);
+	//// cpu filter 
+	//cudaMemcpy(h_disparity, d_disparity, totalPixel * sizeof(uchar), cudaMemcpyDeviceToHost);
+	//Mat cpu_result = Mat(rows, cols, CV_8UC1, h_disparity);
+	//GuidedFilter gf = GuidedFilter(cpu_result, 2, 0.02 * 0.02 * 255 * 255);
+	//Mat dd = gf.filter(cpu_result);
+	//imshow("CPU", dd);
+	//// compare the result 
+	//cudaMemcpy(h_fresult, filter.result_float, totalPixel * sizeof(float), cudaMemcpyDeviceToHost);
+	//imshow("GPU float", Mat(rows, cols, CV_32FC1, h_fresult));
 }

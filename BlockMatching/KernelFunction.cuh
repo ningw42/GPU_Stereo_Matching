@@ -39,6 +39,7 @@ __global__ void kernelPreCal_V2(uchar *left, uchar *right, uchar *difference, in
 
 // find the corresponding point in those two photos
 __global__ void kernelFindCorr(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize);
+__global__ void kernelFindCorrLinear(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int searchRange, int total, int SADWinwdowSize);
 __global__ void kernelFindCorrNonPreCal(uchar *left, uchar *right, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize);
 
 // a pair of function to get the matched position

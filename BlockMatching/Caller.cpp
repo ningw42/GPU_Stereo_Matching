@@ -203,7 +203,7 @@ void streamDepth(Size targetSize, int SADWindowSize, int numDisp)
 		camL >> left;
 		camR >> right;
 		device.pipeline(left, right);
-		waitKey(1);
+		//waitKey(1);
 	}
 }
 
@@ -279,6 +279,13 @@ void OpenCVBM()
 int start_gpu(Size targetSize, int windowSize, int numDisp)
 {
 	//Calib();
+	char c;
+	cout << "Calibrate Camera ? Y/N " << endl;
+	cin >> c;
+	if (c == 'Y' || c == 'y')
+	{
+		Calib();
+	}
 	streamDepth(targetSize, windowSize, numDisp);
 	return 0;
 }
@@ -418,23 +425,38 @@ int start_opencv(Size targetSize, int windowSize, int numDisp)
 
 		key = waitKey(1);
 
-		//if (key == ' ')
-		//{
-			start = clock();
+		if (key == ' ')
+		{
 			resize(left, left, targetSize);
 			resize(right, right, targetSize);
+
+			start = clock();
 			cvtColor(left, g1, CV_BGR2GRAY);
 			cvtColor(right, g2, CV_BGR2GRAY);
+			end = clock();
+			cout << "cvtColor: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
+
+			start = clock();
 			remap(g1, left_rec, x1, y1, INTER_LINEAR, BORDER_CONSTANT, 0);
 			remap(g2, right_rec, x2, y2, INTER_LINEAR, BORDER_CONSTANT, 0);
+			end = clock();
+			cout << "remap: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
+
 			imshow("left_rec", left_rec);
 			imshow("right_rec", right_rec);
+
+			start = clock();
 			sbm(left_rec, right_rec, disparity);
 			normalize(disparity, disp_normed, 0, 255, CV_MINMAX, CV_8UC1);
+			end = clock();
+			cout << "matching: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
+			//guidedFilter(disp_normed, disp_normed, 2, 0.02 * 0.02 * 255 * 255);
+
+			start = clock();
 			imshow("Disp", guidedFilter(disp_normed, disp_normed, 2, 0.02 * 0.02 * 255 * 255));
 			end = clock();
-			cout << (double)(end - start) / CLOCKS_PER_SEC << endl;
-		//}
+			cout << "filter: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
+		}
 	}
 	return 0;
 }

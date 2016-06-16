@@ -491,17 +491,25 @@ void Host::blockMatching(Mat &left, Mat &right, Mat &disparity)
 
 void Host::calculateFrame(Mat &left, Mat &right)
 {
+	clock_t start, end;
 	// resize 
+	start = clock();
 	resize(left, left, sz);
 	resize(right, right, sz);
+	end = clock();
+	cout << "resize: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
+
 	//imshow("Left", left);
 	//imshow("Right", right);
 
 	Mat left_normed, right_normed;
 
 	// convert color
+	start = clock();
 	cvtColor_impl(left, left_color_cvted);
 	cvtColor_impl(right, right_color_cvted);
+	end = clock();
+	cout << "cvtColor: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
 
 	//normalize(left_color_cvted, left_normed, 0, 255, CV_MINMAX, CV_8UC1);
 	//normalize(right_color_cvted, right_normed, 0, 255, CV_MINMAX, CV_8UC1);
@@ -511,24 +519,27 @@ void Host::calculateFrame(Mat &left, Mat &right)
 	//imshow("norm_right", right_normed);
 
 	// remap
+	start = clock();
 	remap_impl(left_color_cvted, left_remapped, x1, y1);
 	remap_impl(right_color_cvted, right_remapped, x2, y2);
+	end = clock();
+	cout << "remap: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
 
 	// stereo matching
+	start = clock();
 	blockMatching(left_remapped, right_remapped, disparity);
+	end = clock();
+	cout << "matching: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
 
 	int r = 2;
 	double eps = 0.02 * 0.02;
 	eps *= 255 * 255;
 	imshow("Disp", disparity);
-	clock_t start, end;
-	//Mat filtered_left = guidedFilter(left_color_cvted, disparity, r, eps);
-	//Mat filtered_result;
-	//disparity.convertTo(filtered_result, CV_32FC1, 1.0 / 255);
-	//blur(left_remapped, filtered_result, Size(r, r));
-	Mat filtered_right = guidedFilter(right_color_cvted, disparity, r, eps);
-	//cout << (double)(end - start) / CLOCKS_PER_SEC << endl;
-	imshow("Filtered_result", filtered_right);
-	//imshow("Filtered_right", filtered_right);
-	//imshow("self", guidedFilter(disparity, disparity, r, eps));
+	Mat filtered_right;
+	start = clock();
+	//filtered_right = 
+	guidedFilter(right_color_cvted, disparity, r, eps);
+	end = clock();
+	cout << "filter: " << (double)(end - start) / CLOCKS_PER_SEC << endl;
+	//imshow("Filtered_result", filtered_right);
 }

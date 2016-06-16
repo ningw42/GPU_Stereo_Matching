@@ -113,10 +113,16 @@ __global__ void kernelFindCorr(uchar *difference, uchar *disparity, int numberOf
 {
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
 	int currentMinSAD = 100 * windowArea;
-	int matchedPosDisp = 255;
-	int col = threadIndex % numberOfCols;
-	int row = threadIndex / numberOfCols;
+	int matchedPosDisp = 0;
+	int col = threadIdx.x;
+	int row = blockIdx.x;
 	int th = 0;
+
+	if (col < searchRange)
+	{
+		disparity[threadIndex] = 0;
+		return;
+	}
 
 	for (int _search = 1; _search <= searchRange; _search++, th += total) {
 		if (col + _search > numberOfCols) break;
@@ -147,6 +153,47 @@ __global__ void kernelFindCorr(uchar *difference, uchar *disparity, int numberOf
 	disparity[threadIndex] = matchedPosDisp;
 }
 
+__global__ void kernelFindCorrLinear(uchar *difference, uchar *disparity, int numberOfCols, int numberOfRows, int searchRange, int total, int SADWinwdowSize)
+{
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	int currentMinSAD = 100 * (2 * SADWinwdowSize + 1);
+	int matchedPosDisp = 255;
+	int col = threadIdx.x;
+	int row = blockIdx.x;
+	int th = 0;
+	//int rowBase = numberOfCols * row;
+
+	if (col < searchRange)
+	{
+		disparity[threadIndex] = 0;
+		return;
+	}
+
+	for (int _search = 1; _search <= searchRange; _search++, th += total) {
+		if (col + _search > numberOfCols) break;
+		int SAD = 0;
+		// calculate the SAD of the current disparity !! Linear
+			for (int j = -SADWinwdowSize; j <= SADWinwdowSize; j++)
+			{
+				int _col = col + j;
+				if (_col >= numberOfCols || _col < 0) continue;
+				SAD += difference[th + threadIndex + j];
+			}
+		if (SAD < currentMinSAD) {
+			matchedPosDisp = _search;
+			currentMinSAD = SAD;
+		}
+	}
+
+	//if (currentMinSAD < 2 * windowArea && matchedPosDisp < 5)
+	//{
+	//	matchedPosDisp = 0;
+	//}
+
+	disparity[threadIndex] = matchedPosDisp;
+}
+
+
 __global__ void kernelFindCorrNonPreCal(uchar *left, uchar *right, uchar *disparity, int numberOfCols, int numberOfRows, int windowArea, int searchRange, int total, int windowsLength, int SADWinwdowSize)
 {
 	// grid and block should be <rows, cols> respectively
@@ -155,6 +202,12 @@ __global__ void kernelFindCorrNonPreCal(uchar *left, uchar *right, uchar *dispar
 	int threadIndex = row * blockDim.x + col;
 	int currentMinSAD = 20 * windowArea;
 	int matchedPosDisp = 0;
+
+	if (col < searchRange)
+	{
+		disparity[threadIndex] = 0;
+		return;
+	}
 
 	for (int _search = 0; _search < searchRange; _search++) {
 		if (col + _search > numberOfCols) break;
@@ -217,28 +270,33 @@ __global__ void kernelFindAllSAD(uchar *left, uchar *right, uchar *difference, u
 __global__ void kernelFindMinSAD(uchar *SAD_data, uchar *disparity, int numberOfCols, int searchRange)
 {
 	// TO-DO: return the original index of the min element as the matched position
+	extern __shared__ int idx[];
+	for (size_t i = 0; i < searchRange; i++)
+	{
+		idx[i] = i;
+	}
 	int step = threadIdx.x;
 	int frameBias = blockIdx.x * numberOfCols + blockIdx.y;
 	int base = searchRange * frameBias;
 	int matchedPos = 0;
 
 	int index = step + base;
-	for (size_t i = blockDim.x / 2; i > 0; i = i >> 1)
+	for (size_t i = blockDim.x >> 1; i > 0; i = i >> 1)
 	{
 		if (step < i)
 		{
-			if (SAD_data[index] < SAD_data[index + i])
-				SAD_data[index] = SAD_data[index];
-			else
+			if (SAD_data[index] > SAD_data[index + i])
+			{
 				SAD_data[index] = SAD_data[index + i];
-			// SAD_data[index] = min(SAD_data[index], SAD_data[index + i]);
+				idx[step] = idx[step + i];
+			}
 		}
 		__syncthreads();
 	}
 
 	if (step == 0)
 	{
-		disparity[frameBias] = matchedPos;
+		disparity[frameBias] = idx[0];
 	}
 }
 
